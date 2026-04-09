@@ -3,76 +3,96 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Parken & Gastro Krefeld</title>
+    <title>Gastro & Parken Flex-Suche</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <script src="https://unpkg.com/opening_hours@3.7.0/opening_hours.js"></script>
     <style>
-        body { margin: 0; padding: 0; }
+        body { margin: 0; padding: 0; font-family: sans-serif; }
         #map { height: 100vh; width: 100vw; }
         .status-box {
             position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
             z-index: 1000; background: white; padding: 8px 15px;
             border-radius: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            font-family: sans-serif; font-weight: bold; font-size: 14px;
+            font-weight: bold; font-size: 13px; text-align: center; min-width: 200px;
         }
     </style>
 </head>
 <body>
 
-<div class="status-box" id="status">Ortung läuft...</div>
+<div class="status-box" id="status">Karte bewegen zum Suchen</div>
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
     const map = L.map('map').setView([51.333, 6.562], 14);
     const statusBox = document.getElementById('status');
+    let markerGroup = L.layerGroup().addTo(map);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    const iconP = L.divIcon({ html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 24px;"></i>', className: 'custom-icon', iconAnchor: [12, 12] });
+    const iconP = L.divIcon({ html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 26px;"></i>', className: 'custom-icon', iconAnchor: [13, 13] });
     const iconR = L.divIcon({ html: '<i class="fa-solid fa-utensils" style="color: #2ecc71; font-size: 22px;"></i>', className: 'custom-icon', iconAnchor: [11, 11] });
     const iconI = L.divIcon({ html: '<i class="fa-solid fa-ice-cream" style="color: #8e44ad; font-size: 24px;"></i>', className: 'custom-icon', iconAnchor: [12, 12] });
 
+    // Erstmalige Ortung
     map.locate({setView: true, maxZoom: 15});
-
     map.on('locationfound', (e) => {
         L.marker(e.latlng).addTo(map).bindPopup("Dein Standort");
-        statusBox.innerHTML = "Suche Daten...";
-        fetchData(e.latlng.lat, e.latlng.lng);
+        startSuche();
     });
 
-    async function fetchData(lat, lng) {
+    // Suche starten, wenn Karte fertig bewegt wurde
+    map.on('moveend', () => {
+        startSuche();
+    });
+
+    async function startSuche() {
+        const center = map.getCenter();
+        statusBox.innerHTML = "Suche im 2km Umkreis...";
+        statusBox.style.color = "orange";
+        
         const query = `[out:json][timeout:25];(
-            node["amenity"="parking"]["access"!="private"](around:2000,${lat},${lng});
-            node["amenity"~"restaurant|ice_cream"](around:2000,${lat},${lng});
+            node["amenity"="parking"]["access"!="private"](around:2000,${center.lat},${center.lng});
+            way["amenity"="parking"]["access"!="private"](around:2000,${center.lat},${center.lng});
+            node["amenity"~"restaurant|ice_cream"](around:2000,${center.lat},${center.lng});
         );out center;`;
 
         try {
             const resp = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query));
             const data = await resp.json();
             
+            markerGroup.clearLayers(); // Alte Marker weg
+
             data.elements.forEach(el => {
-                const pos = [el.lat, el.lon];
+                const pos = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lng];
                 let icon = iconP;
-                let info = el.tags.name || "Eintrag";
+                let title = el.tags.name || "Eintrag";
+                let statusInfo = "";
 
-                if (el.tags.amenity === 'restaurant') icon = iconR;
-                if (el.tags.amenity === 'ice_cream') icon = iconI;
-
-                let oh = "";
-                if(el.tags.opening_hours) {
-                    try {
-                        const ohParser = new opening_hours(el.tags.opening_hours);
-                        oh = ohParser.getState() ? "<br><b style='color:green;'>Offen</b>" : "<br><b style='color:red;'>Zu</b>";
-                    } catch(e) { oh = "<br>Zeit: " + el.tags.opening_hours; }
+                if (el.tags.amenity === 'parking') {
+                    title = el.tags.fee === 'no' ? "Kostenloser Parkplatz" : "Parkplatz";
+                } else {
+                    if (el.tags.amenity === 'restaurant') icon = iconR;
+                    if (el.tags.amenity === 'ice_cream') icon = iconI;
+                    
+                    if(el.tags.opening_hours) {
+                        try {
+                            const oh = new opening_hours(el.tags.opening_hours);
+                            statusInfo = oh.getState() ? "<br><b style='color:green;'>✅ OFFEN</b>" : "<br><b style='color:red;'>❌ ZU</b>";
+                        } catch(e) { statusInfo = "<br>Zeit: " + el.tags.opening_hours; }
+                    } else {
+                        statusInfo = "<br>Keine Zeiten bekannt";
+                    }
                 }
 
-                L.marker(pos, {icon: icon}).addTo(map).bindPopup(`<b>${info}</b>${oh}`);
+                L.marker(pos, {icon: icon}).addTo(markerGroup).bindPopup(`<b>${title}</b>${statusInfo}`);
             });
-            statusBox.innerHTML = "Bereit (2km)";
+            statusBox.innerHTML = "Bereit - Bereich geladen";
+            statusBox.style.color = "green";
         } catch (err) {
-            statusBox.innerHTML = "Fehler: Bitte Seite neu laden";
+            statusBox.innerHTML = "Fehler: Datenbank besetzt";
+            statusBox.style.color = "red";
         }
     }
 </script>
