@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Parken & Gastro Echtzeit</title>
+    <title>Parken & Gastro Krefeld</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <script src="https://unpkg.com/opening_hours@3.7.0/opening_hours.js"></script>
@@ -21,7 +21,7 @@
 <body>
 
 <div class="info-box">
-    <div id="status">Suche kostenlose Plätze & Gastro (2km)...</div>
+    <div id="status">Suche Parkplätze & Gastro (2km)...</div>
 </div>
 
 <div id="map"></div>
@@ -46,11 +46,10 @@
 
     async function fetchData(lat, lng) {
         const radius = 2000;
-        // Suche nach kostenlosen Parkplätzen UND Gastro mit Zeiten
-        const query = `[out:json][timeout:30];(
-            node["amenity"="parking"](around:${radius},${lat},${lng});
-            way["amenity"="parking"](around:${radius},${lat},${lng});
-            node["amenity"~"restaurant|ice_cream"]["opening_hours"](around:${radius},${lat},${lng});
+        const query = `[out:json][timeout:35];(
+            node["amenity"="parking"]["access"!="private"](around:${radius},${lat},${lng});
+            way["amenity"="parking"]["access"!="private"](around:${radius},${lat},${lng});
+            node["amenity"~"restaurant|ice_cream"](around:${radius},${lat},${lng});
         );out center;`;
 
         try {
@@ -60,16 +59,14 @@
             data.elements.forEach(el => {
                 const pos = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lng];
                 let currentIcon = iconParking;
-                let title = el.tags.name || "Parkplatz";
+                let title = el.tags.name || "Eintrag";
                 let statusText = "";
 
-                // Parkplatz-Check (Kostenlos?)
                 if (el.tags.amenity === 'parking') {
-                    if (el.tags.fee === 'yes') return; // Kostenpflichtige ignorieren
-                    title = "Kostenloser Parkplatz";
+                    title = "Öffentlicher Parkplatz";
+                    if(el.tags.fee === 'no') title = "Kostenloser Parkplatz";
                 }
 
-                // Gastro-Check (Öffnungszeiten)
                 if(el.tags.opening_hours) {
                     try {
                         const oh = new opening_hours(el.tags.opening_hours);
@@ -77,7 +74,11 @@
                         statusText = isOpen ? 
                             "<br><b style='color:green;'>✅ JETZT GEÖFFNET</b>" : 
                             "<br><b style='color:red;'>❌ GERADE GESCHLOSSEN</b>";
-                    } catch(e) { statusText = "<br>Zeitangabe unklar"; }
+                    } catch(e) { 
+                        statusText = "<br>Öffnungszeiten: " + el.tags.opening_hours; 
+                    }
+                } else if (el.tags.amenity !== 'parking') {
+                    statusText = "<br>Keine Zeit-Info hinterlegt";
                 }
 
                 if (el.tags.amenity === 'restaurant') {
@@ -97,7 +98,7 @@
     }
 </script>
 
-<div id="impressum" style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc;">
+<div style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc;">
     Impressum: Peter Jaki | Kontakt: peterjaki@example.com | 2026 Parkplatz-Suche
 </div>
 
