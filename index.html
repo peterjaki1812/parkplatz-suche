@@ -16,7 +16,6 @@
             border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
             border: 2px solid #003399; font-weight: bold; text-align: center;
         }
-        .custom-icon { display: flex; align-items: center; justify-content: center; }
     </style>
 </head>
 <body>
@@ -32,12 +31,10 @@
     const map = L.map('map').setView([51.333, 6.562], 14);
     const statusBox = document.getElementById('status');
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap'
-    }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    const iconParking = L.divIcon({ html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 26px;"></i>', className: 'custom-icon', iconSize: [26, 26], iconAnchor: [13, 13] });
-    const iconResto = L.divIcon({ html: '<i class="fa-solid fa-utensils" style="color: #2ecc71; font-size: 22px;"></i>', className: 'custom-icon', iconSize: [22, 22], iconAnchor: [11, 11] });
+    const iconParking = L.divIcon({ html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 28px;"></i>', className: 'custom-icon', iconSize: [28, 28], iconAnchor: [14, 14] });
+    const iconResto = L.divIcon({ html: '<i class="fa-solid fa-utensils" style="color: #2ecc71; font-size: 24px;"></i>', className: 'custom-icon', iconSize: [24, 24], iconAnchor: [12, 12] });
     const iconIce = L.divIcon({ html: '<i class="fa-solid fa-ice-cream" style="color: #8e44ad; font-size: 24px;"></i>', className: 'custom-icon', iconSize: [24, 24], iconAnchor: [12, 12] });
 
     map.locate({setView: true, maxZoom: 15});
@@ -49,9 +46,10 @@
 
     async function fetchData(lat, lng) {
         const radius = 2000;
-        const query = `[out:json][timeout:25];(
-            node["amenity"="parking"]["fee"="no"](around:${radius},${lat},${lng});
-            way["amenity"="parking"]["fee"="no"](around:${radius},${lat},${lng});
+        // Suche nach kostenlosen Parkplätzen UND Gastro mit Zeiten
+        const query = `[out:json][timeout:30];(
+            node["amenity"="parking"](around:${radius},${lat},${lng});
+            way["amenity"="parking"](around:${radius},${lat},${lng});
             node["amenity"~"restaurant|ice_cream"]["opening_hours"](around:${radius},${lat},${lng});
         );out center;`;
 
@@ -62,15 +60,24 @@
             data.elements.forEach(el => {
                 const pos = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lng];
                 let currentIcon = iconParking;
-                let title = el.tags.name || "Kostenloser Parkplatz";
-                let ohText = "";
+                let title = el.tags.name || "Parkplatz";
+                let statusText = "";
 
+                // Parkplatz-Check (Kostenlos?)
+                if (el.tags.amenity === 'parking') {
+                    if (el.tags.fee === 'yes') return; // Kostenpflichtige ignorieren
+                    title = "Kostenloser Parkplatz";
+                }
+
+                // Gastro-Check (Öffnungszeiten)
                 if(el.tags.opening_hours) {
                     try {
                         const oh = new opening_hours(el.tags.opening_hours);
                         const isOpen = oh.getState();
-                        ohText = isOpen ? "<br><span style='color:green; font-weight:bold;'>Jetzt geöffnet</span>" : "<br><span style='color:red; font-weight:bold;'>Gerade geschlossen</span>";
-                    } catch(e) { ohText = "<br>Öffnungszeiten vorhanden"; }
+                        statusText = isOpen ? 
+                            "<br><b style='color:green;'>✅ JETZT GEÖFFNET</b>" : 
+                            "<br><b style='color:red;'>❌ GERADE GESCHLOSSEN</b>";
+                    } catch(e) { statusText = "<br>Zeitangabe unklar"; }
                 }
 
                 if (el.tags.amenity === 'restaurant') {
@@ -81,7 +88,7 @@
                     title = el.tags.name || "Eisdiele";
                 }
 
-                L.marker(pos, {icon: currentIcon}).addTo(map).bindPopup(`<b>${title}</b>${ohText}`);
+                L.marker(pos, {icon: currentIcon}).addTo(map).bindPopup(`<b>${title}</b>${statusText}`);
             });
             statusBox.innerHTML = "Bereit (2km Umkreis)";
         } catch (err) {
