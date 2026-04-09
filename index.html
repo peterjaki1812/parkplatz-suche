@@ -1,105 +1,316 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Gastro & Parken Flex-Suche</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
-    <script src="https://unpkg.com/opening_hours@3.7.0/opening_hours.js"></script>
-    <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; }
-        #map { height: 100vh; width: 100vw; }
-        .status-box {
-            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-            z-index: 1000; background: white; padding: 8px 15px;
-            border-radius: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            font-weight: bold; font-size: 13px; text-align: center; min-width: 200px;
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#2d6a2d">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="WanderFreunde">
+<link rel="manifest" href="/manifest.json">
+<title>WanderFreunde Tour</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,sans-serif;background:#1a1a1a;color:white}
+#login-screen{position:fixed;top:0;left:0;width:100%;height:100%;background:#1a1a1a;z-index:9999;display:flex;align-items:center;justify-content:center}
+.login-box{background:#2a2a2a;border-radius:16px;padding:40px;border:2px solid #2d6a2d;text-align:center;max-width:360px;width:90%}
+.login-box h2{color:#a5d6a7;font-size:22px;margin-bottom:8px}
+.login-box p{color:#777;font-size:14px;margin-bottom:24px}
+.pw-wrap{position:relative;margin-bottom:12px}
+.pw-wrap input{width:100%;padding:12px 40px 12px 12px;border-radius:10px;border:1px solid #555;background:#111;color:white;font-size:16px;text-align:center}
+.pw-toggle{position:absolute;right:12px;top:50%;transform:translateY(-50%);cursor:pointer;font-size:18px;color:#aaa;user-select:none}
+.login-box button{width:100%;padding:12px;background:#2d6a2d;border:none;border-radius:10px;color:white;font-size:16px;font-weight:bold;cursor:pointer}
+.login-box button:hover{background:#3d8a3d}
+.login-fehler{color:#ff5555;font-size:14px;margin-top:10px;display:none}
+h1{text-align:center;padding:10px;background:#2d6a2d;color:white;font-size:22px;letter-spacing:1px}
+h2{text-align:center;padding:4px;background:#2d6a2d;color:#c8e6c8;font-size:13px;font-weight:normal;letter-spacing:2px}
+.buttons{display:flex;justify-content:center;gap:10px;padding:8px;background:#222;border-bottom:1px solid #444}
+button{padding:8px 18px;font-size:14px;font-weight:bold;border:none;border-radius:25px;cursor:pointer;color:white;transition:0.2s}
+#btn-nah{background:#2d6a2d;border:2px solid #1e4d1e}
+#btn-mittel{background:#00008B;border:2px solid #000055}
+#btn-fern{background:#e07b00;border:2px solid #9c5600}
+#info{text-align:center;padding:6px;font-size:14px;color:#a5d6a7;background:#111;font-weight:bold}
+#map{width:100%;height:62vh}
+.custom-marker{width:24px;height:24px;border-radius:50%;border:3px solid #fff;outline:2px solid #000;box-shadow:0 0 10px rgba(0,0,0,1);display:block}
+.leaflet-popup-content-wrapper{background:#1a1a1a;color:white;border-radius:12px;border:2px solid #444;width:300px}
+.popup-info h3{color:#fff;background:#0033cc;padding:6px 8px;border-radius:4px;margin-bottom:8px;font-size:16px;text-align:center}
+.popup-info p{margin:5px 0;font-size:13px;line-height:1.4;border-bottom:1px solid #333;padding-bottom:4px}
+.popup-info b{color:#81c784}
+.popup-navi{color:#ffcc00;font-size:13px;font-weight:bold}
+#touren-liste{padding:10px;display:flex;flex-direction:column;gap:8px;max-width:1000px;margin:0 auto}
+.tour-karte{background:#2a2a2a;border-radius:10px;padding:10px;border-left:8px solid;color:#ddd}
+.tour-karte.nah{border-left-color:#2d6a2d}
+.tour-karte.mittel{border-left-color:#00008B}
+.tour-karte.fern{border-left-color:#e07b00}
+.tour-karte h3{font-size:14px;margin-bottom:4px}
+.tour-karte p{font-size:12px;margin:2px 0;line-height:1.3}
+.tour-karte b{color:#81c784}
+.address-box{color:#ffcc00;font-size:11px;font-weight:bold;display:block;margin-top:4px;border:1px dashed #555;padding:4px;background:#111;border-radius:4px}
+.park-hinweis{color:#ff9800;font-size:10px;display:block;margin-top:2px}
+.hm-badge{display:inline-block;background:#333;color:#81c784;padding:1px 6px;border-radius:8px;font-size:11px;margin-left:6px}
+#abstimmung-bereich{max-width:1000px;margin:0 auto;padding:10px}
+.abstimmung-box{background:#1e1e1e;border-radius:14px;padding:15px;border:2px solid #444;margin-top:8px}
+.abstimmung-box h3{text-align:center;color:#a5d6a7;font-size:17px;margin-bottom:15px}
+.vote-btn{width:100%;padding:10px;margin:5px 0;border-radius:10px;border:1px solid #444;font-size:14px;font-weight:bold;cursor:pointer;color:white;background:#2a2a2a;transition:0.2s;text-align:left}
+.vote-btn:hover{background:#3a3a3a}
+.chart-container{display:flex;justify-content:space-around;align-items:flex-end;height:200px;padding:0 20px;margin:15px 0;gap:20px;border-bottom:2px solid #444}
+.chart-col{display:flex;flex-direction:column;align-items:center;flex:1;height:100%;justify-content:flex-end}
+.chart-label-top{text-align:center;margin-bottom:6px}
+.chart-pct{font-size:18px;font-weight:bold;color:white}
+.chart-votes{font-size:11px;color:#aaa;margin-top:2px}
+.chart-bar{width:100%;border-radius:8px 8px 0 0;transition:height 1s ease;min-height:4px}
+.chart-name{text-align:center;margin-top:8px;font-size:11px;color:#ddd;line-height:1.4}
+.vote-gesamt{text-align:center;color:#888;font-size:12px;margin-top:10px;padding:6px;background:#111;border-radius:8px}
+.bereits-abgestimmt{text-align:center;color:#ff9800;font-size:13px;font-weight:bold;padding:8px;background:#2a2000;border-radius:8px;margin-top:8px}
+.reset-bereich{text-align:center;margin-top:12px;padding:12px;background:#111;border-radius:10px;border:1px dashed #555}
+.reset-bereich input{padding:7px 12px;border-radius:8px;border:1px solid #555;background:#222;color:white;font-size:13px;margin-right:8px}
+.reset-btn{padding:7px 16px;background:#8b0000;border:none;border-radius:8px;color:white;font-weight:bold;cursor:pointer;font-size:13px}
+.reset-btn:hover{background:#cc0000}
+#impressum{padding:20px;background:#111;font-size:0.8em;border-top:1px solid #333;color:#777;text-align:center}
+@media(max-width:600px){#map{height:55vh}}
+</style>
 </head>
 <body>
-
-<div class="status-box" id="status">Karte bewegen zum Suchen</div>
+<div id="login-screen">
+  <div class="login-box">
+    <h2>🥾 WanderFreunde Tour</h2>
+    <p>Bitte Passwort eingeben</p>
+    <div class="pw-wrap">
+      <input type="password" id="login-pw" placeholder="Passwort" onkeypress="if(event.key==='Enter')checkLogin()"/>
+      <span class="pw-toggle" onclick="togglePw()" title="Passwort anzeigen">👁️</span>
+    </div>
+    <button onclick="checkLogin()">🔓 Einloggen</button>
+    <div class="login-fehler" id="login-fehler">❌ Falsches Passwort!</div>
+  </div>
+</div>
+<h1>🥾 WanderFreunde Tour</h1>
+<h2>Abstimmen – Losgehen – Erleben!</h2>
+<div class="buttons">
+<button id="btn-nah" onclick="zeigeTour('nah')">🟢 Nah</button>
+<button id="btn-mittel" onclick="zeigeTour('mittel')">🔵 Mittel</button>
+<button id="btn-fern" onclick="zeigeTour('fern')">🟠 Fern</button>
+</div>
+<div id="info">📍 Klicke auf einen Button um Touren zu sehen!</div>
 <div id="map"></div>
-
+<div id="touren-liste"></div>
+<div id="abstimmung-bereich"></div>
+<div id="impressum"><p>WanderFreunde Gruppe</p></div>
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const map = L.map('map').setView([51.333, 6.562], 14);
-    const statusBox = document.getElementById('status');
-    let markerGroup = L.layerGroup().addTo(map);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-
-    const iconP = L.divIcon({ html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 26px;"></i>', className: 'custom-icon', iconAnchor: [13, 13] });
-    const iconR = L.divIcon({ html: '<i class="fa-solid fa-utensils" style="color: #2ecc71; font-size: 22px;"></i>', className: 'custom-icon', iconAnchor: [11, 11] });
-    const iconI = L.divIcon({ html: '<i class="fa-solid fa-ice-cream" style="color: #8e44ad; font-size: 24px;"></i>', className: 'custom-icon', iconAnchor: [12, 12] });
-
-    // Erstmalige Ortung
-    map.locate({setView: true, maxZoom: 15});
-    map.on('locationfound', (e) => {
-        L.marker(e.latlng).addTo(map).bindPopup("Dein Standort");
-        startSuche();
-    });
-
-    // Suche starten, wenn Karte fertig bewegt wurde
-    map.on('moveend', () => {
-        startSuche();
-    });
-
-    async function startSuche() {
-        const center = map.getCenter();
-        statusBox.innerHTML = "Suche im 2km Umkreis...";
-        statusBox.style.color = "orange";
-        
-        const query = `[out:json][timeout:25];(
-            node["amenity"="parking"]["access"!="private"](around:2000,${center.lat},${center.lng});
-            way["amenity"="parking"]["access"!="private"](around:2000,${center.lat},${center.lng});
-            node["amenity"~"restaurant|ice_cream"](around:2000,${center.lat},${center.lng});
-        );out center;`;
-
-        try {
-            const resp = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query));
-            const data = await resp.json();
-            
-            markerGroup.clearLayers(); // Alte Marker weg
-
-            data.elements.forEach(el => {
-                const pos = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lng];
-                let icon = iconP;
-                let title = el.tags.name || "Eintrag";
-                let statusInfo = "";
-
-                if (el.tags.amenity === 'parking') {
-                    title = el.tags.fee === 'no' ? "Kostenloser Parkplatz" : "Parkplatz";
-                } else {
-                    if (el.tags.amenity === 'restaurant') icon = iconR;
-                    if (el.tags.amenity === 'ice_cream') icon = iconI;
-                    
-                    if(el.tags.opening_hours) {
-                        try {
-                            const oh = new opening_hours(el.tags.opening_hours);
-                            statusInfo = oh.getState() ? "<br><b style='color:green;'>✅ OFFEN</b>" : "<br><b style='color:red;'>❌ ZU</b>";
-                        } catch(e) { statusInfo = "<br>Zeit: " + el.tags.opening_hours; }
-                    } else {
-                        statusInfo = "<br>Keine Zeiten bekannt";
-                    }
-                }
-
-                L.marker(pos, {icon: icon}).addTo(markerGroup).bindPopup(`<b>${title}</b>${statusInfo}`);
-            });
-            statusBox.innerHTML = "Bereit - Bereich geladen";
-            statusBox.style.color = "green";
-        } catch (err) {
-            statusBox.innerHTML = "Fehler: Datenbank besetzt";
-            statusBox.style.color = "red";
-        }
-    }
+var BESITZER_KEY='peter1812';
+var passwörter=['claudia1','uwe2','wanderer03','wanderer04','wanderer05','wanderer06','wanderer07','wanderer08','wanderer09','wanderer10','wanderer11','wanderer12','wanderer13','wanderer14','wanderer15','wanderer16','wanderer17','wanderer18','wanderer19','wanderer20','wanderer21','wanderer22','wanderer23','wanderer24','wanderer25','wanderer26','wanderer27','wanderer28','wanderer29','wanderer30'];
+function togglePw(){var i=document.getElementById('login-pw');i.type=i.type==='password'?'text':'password';}
+function getBenutztePW(){var d=localStorage.getItem('wf_benutzte_pw');return d?JSON.parse(d):[];}
+function checkLogin(){
+  var pw=document.getElementById('login-pw').value.trim();
+  if(pw===BESITZER_KEY){localStorage.setItem('wf_eingeloggt',BESITZER_KEY);document.getElementById('login-screen').style.display='none';return;}
+  if(passwörter.includes(pw)){
+    var b=getBenutztePW();
+    if(b.includes(pw)){document.getElementById('login-fehler').innerText='❌ Dieses Passwort wurde bereits benutzt!';document.getElementById('login-fehler').style.display='block';document.getElementById('login-pw').value='';return;}
+    b.push(pw);localStorage.setItem('wf_benutzte_pw',JSON.stringify(b));localStorage.setItem('wf_eingeloggt',pw);document.getElementById('login-screen').style.display='none';
+  }else{document.getElementById('login-fehler').innerText='❌ Falsches Passwort!';document.getElementById('login-fehler').style.display='block';document.getElementById('login-pw').value='';}
+}
+var el=localStorage.getItem('wf_eingeloggt');
+if(el===BESITZER_KEY||passwörter.includes(el)){document.getElementById('login-screen').style.display='none';}
+var map=L.map('map').setView([51.35,6.6],9);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+if(navigator.geolocation){navigator.geolocation.getCurrentPosition(function(p){map.setView([p.coords.latitude,p.coords.longitude],9);});}
+var aktiveMarker=[],farben={nah:'#006400',mittel:'#00008B',fern:'#FF8C00'};
+var rotationState={nah:0,mittel:0,fern:0},aktuelleTouren=[];
+var RESET_PASSWORT='wandern2025';
+function getRestaurantName(r){return r.replace('🍴 ','').split('–')[0].trim();}
+var touren={
+nah:[
+{name:"Diersfordter Wald",km:"14 km",hm:"120 hm",start:[51.6833,6.5333],parkplatz:"Am Schloßpark 1, 46487 Wesel",highlights:"Großwildgehege & Moorpfade 🌲",restaurant:"🍴 Waldschänke – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Kaiserswerth",km:"12 km",hm:"80 hm",start:[51.3167,6.7333],parkplatz:"Burgallee, 40489 Düsseldorf-Kaiserswerth",highlights:"Kaiserpfalz & Rheinpromenade 🏛️",restaurant:"🍴 Alte Rathausallee – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Bislicher Insel",km:"13 km",hm:"60 hm",start:[51.6667,6.3833],parkplatz:"Bislicher Insel, 46509 Xanten",highlights:"Vogelparadies & Auenlandschaft 🦢",restaurant:"🍴 Auen-Café – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Neandertal Rundweg",km:"13 km",hm:"220 hm",start:[51.2167,6.9833],parkplatz:"Theisbruch 1, 40822 Mettmann",highlights:"Eiszeit-Wildgehege & Düsselschlucht 🏛️",restaurant:"🍴 Neandertal No. 1 – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Krickenbecker Seen",km:"13,5 km",hm:"90 hm",start:[51.3167,6.2000],parkplatz:"Krickenbecker Allee 37, 41334 Nettetal",highlights:"Wasserschloss & Vogelparadies 🦢",restaurant:"🍴 Seeblick – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Leucht Waldgebiet",km:"12,5 km",hm:"150 hm",start:[51.5667,6.2833],parkplatz:"Wanderparkplatz B510, 47475 Kamp-Lintfort",highlights:"Heide-Landschaft & Aussichtsturm 🌲",restaurant:"🍴 Klosterkamp Gastro – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Hülser Berg",km:"13 km",hm:"180 hm",start:[51.3833,6.5333],parkplatz:"Rennstieg 1, 47802 Krefeld",highlights:"Johannesturm & Wildschweine ⛰️",restaurant:"🍴 Bergschänke – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Zons am Rhein",km:"12 km",hm:"70 hm",start:[51.1367,6.8417],parkplatz:"Museumstraße 1, 41541 Dormagen-Zons",highlights:"Mittelalterliche Zollfeste & Rheinblick 🏛️",restaurant:"🍴 Schlossdestille – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Schloss Rheydt",km:"12,5 km",hm:"100 hm",start:[51.1667,6.4333],parkplatz:"Schloßstraße 508, 41238 Mönchengladbach",highlights:"Renaissance-Schloss & Schlosspark 🏯",restaurant:"🍴 Schloss-Gastro – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Elmpter Schwalmbruch",km:"11 km",hm:"60 hm",start:[51.2167,6.1333],parkplatz:"Tackenbenden, 41372 Niederkrüchten",highlights:"Wacholderheide & Hochmoore 🌿",restaurant:"🍴 Zur Schwalm – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Oedter Niersauen",km:"12 km",hm:"80 hm",start:[51.3333,6.3667],parkplatz:"Mühlengasse, 47929 Grefrath",highlights:"Burg Uda & Nierspfade 🏰",restaurant:"🍴 Auffelder Bauerncafé – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Hohe Mark Wolfsberg",km:"14 km",hm:"140 hm",start:[51.7500,7.1000],parkplatz:"Waldschänke Westricher Str., 45721 Haltern",highlights:"Aussichtsturm & Sandwege 🌲",restaurant:"🍴 Waldschänke Haltern – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Süchtelner Höhen",km:"13 km",hm:"160 hm",start:[51.2833,6.3667],parkplatz:"Hindenburgstraße, 41749 Viersen-Süchteln",highlights:"Kletterwald & Wildgehege 🦌",restaurant:"🍴 Haus Höhenblick – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Maas-Schwalm-Nette",km:"15 km",hm:"100 hm",start:[51.2500,6.1833],parkplatz:"Grenzwald Parkplatz, 41334 Nettetal",highlights:"Galgenvenn & Mammutbäume 🌲",restaurant:"🍴 Haus Galgenvenn – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Angermunder Seen",km:"12 km",hm:"90 hm",start:[51.3333,6.7833],parkplatz:"Schloss Heltorf Parkplatz, 40489 Düsseldorf",highlights:"Schloss Heltorf & Waldseen 🏰",restaurant:"🍴 Rosenhof Düsseldorf – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Grafenberger Wald",km:"11 km",hm:"130 hm",start:[51.2500,6.8333],parkplatz:"Rennbahnstraße Waldparkplatz, 40629 Düsseldorf",highlights:"Wildpark & Piel's Loch 🦌",restaurant:"🍴 Gut Wolfsaue – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Wankumer Heide",km:"13 km",hm:"70 hm",start:[51.3667,6.2500],parkplatz:"Heideweg Wanderparkplatz, 47669 Wachtendonk",highlights:"Blaue Lagune & Sandheiden 🏖️",restaurant:"🍴 Landhaus Wolters – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Üttelsheimer See",km:"10 km",hm:"50 hm",start:[51.4667,6.6833],parkplatz:"Buschstraße Seeparkplatz, 47198 Duisburg",highlights:"See-Rundweg & Naturpark 🌊",restaurant:"🍴 Seeschlößchen Duisburg – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Tüschenbroicher Mühle",km:"12 km",hm:"110 hm",start:[51.1167,6.2500],parkplatz:"Gerderahner Str. Wanderparkplatz, 41844 Wegberg",highlights:"Schlossruine & Mühlenteiche 🏰",restaurant:"🍴 Mühlen-Restaurant Wegberg – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Kaldenkircher Grenzwald",km:"14 km",hm:"80 hm",start:[51.3167,6.1667],parkplatz:"Sequoiafarm Parkplatz, 41334 Nettetal",highlights:"Mammutbaum-Farm & Grenzwald 🌲",restaurant:"🍴 Zur Grenze Nettetal – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Landschaftspark Nord",km:"10 km",hm:"60 hm",start:[51.4833,6.7833],parkplatz:"Emscherstraße Großparkplatz, 47137 Duisburg",highlights:"Industriekultur & Hochöfen 🏗️",restaurant:"🍴 Hauptschalthaus Duisburg – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Tiger und Turtle Pfad",km:"11 km",hm:"90 hm",start:[51.3750,6.7333],parkplatz:"Ehinger Str. Parkplatz, 47249 Duisburg",highlights:"Magic Mountain & Rheinblick 🎢",restaurant:"🍴 Heinrich-Hildebrand-Höhe – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Gocher Heide",km:"13 km",hm:"70 hm",start:[51.6833,6.1500],parkplatz:"Reichswald Wanderparkplatz, 47574 Goch",highlights:"Reichswald-Pfade & Natur 🌲",restaurant:"🍴 Haus der Begegnung Goch – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Schwanenburg Kleve",km:"12 km",hm:"100 hm",start:[51.7833,6.1333],parkplatz:"Tiergartenstr. Großparkplatz, 47533 Kleve",highlights:"Barockgärten & Schwanenburg 🏰",restaurant:"🍴 Forsthaus Kleve – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Baldeneysee Uferweg",km:"15 km",hm:"140 hm",start:[51.4000,7.0167],parkplatz:"Regattastrecke Großparkplatz, 45133 Essen",highlights:"Villa Hügel & Seeblick 🌊",restaurant:"🍴 Südtiroler Stuben Essen – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Schurenbachhalde",km:"10 km",hm:"80 hm",start:[51.5167,7.0333],parkplatz:"Emscherstraße Waldparkplatz, 45329 Essen",highlights:"Bramme & Industriekultur 🏗️",restaurant:"🍴 Schurenbach Gastro – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Schloss Benrath Park",km:"11 km",hm:"70 hm",start:[51.1667,6.8667],parkplatz:"Benrather Schloßallee Großparkplatz, 40597 Düsseldorf",highlights:"Spiegelsaal & Schlosspark 🏯",restaurant:"🍴 Schloss-Café Benrath – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Hertener Schlosspark",km:"12 km",hm:"90 hm",start:[51.5917,7.1333],parkplatz:"Im Schlosspark Großparkplatz, 45699 Herten",highlights:"Wasserschloss & Narzissen 🏰",restaurant:"🍴 Schlosscafé Herten – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Emscherbruch",km:"13 km",hm:"60 hm",start:[51.5667,7.0833],parkplatz:"Wiedehopfstraße Waldparkplatz, 45892 Gelsenkirchen",highlights:"Wildpferde-Areal & Natur 🐎",restaurant:"🍴 Waldhaus Gelsenkirchen – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Heissiwald Essen",km:"12 km",hm:"150 hm",start:[51.3833,7.0333],parkplatz:"Weg zur Platte Waldparkplatz, 45239 Essen",highlights:"Wildgatter & Ruhrhöhen 🦌",restaurant:"🍴 Zur Platte Essen – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Moerser Schlosspark",km:"10 km",hm:"50 hm",start:[51.4500,6.6167],parkplatz:"Krefelder Str. Großparkplatz, 47441 Moers",highlights:"Festungsanlage & Schloss 🏰",restaurant:"🍴 Schlosscafé Moers – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Forstwald Krefeld",km:"11 km",hm:"80 hm",start:[51.3000,6.5167],parkplatz:"Forstwaldstraße Waldparkplatz, 47804 Krefeld",highlights:"Historische Landwehr & Wald 🌲",restaurant:"🍴 Forsthaus Krefeld – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Nieper Kuhlen",km:"13 km",hm:"90 hm",start:[51.3833,6.5833],parkplatz:"Nieper Straße Wanderparkplatz, 47506 Neukirchen-Vluyn",highlights:"Altrheinrinnen & Naturpfade 🌿",restaurant:"🍴 Landhaus Niep – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Sonsbecker Schweiz",km:"14 km",hm:"170 hm",start:[51.6500,6.2000],parkplatz:"Sonsbecker Schweiz Wanderparkplatz, 47665 Sonsbeck",highlights:"Aussichtsturm & Hügellandschaft ⛰️",restaurant:"🍴 Landcafé Sonsbeck – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Xantener Südsee",km:"12 km",hm:"50 hm",start:[51.6667,6.4500],parkplatz:"Am Meerend Großparkplatz, 46509 Xanten",highlights:"Hafen Vynen & Wassersport 🌊",restaurant:"🍴 Plaza del Mar Xanten – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Kloster Kamp Garten",km:"11 km",hm:"130 hm",start:[51.5000,6.5167],parkplatz:"Abteiplatz Großparkplatz, 47475 Kamp-Lintfort",highlights:"Terrassengarten & Kloster ⛪",restaurant:"🍴 Kloster-Gastro Kamp-Lintfort – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Hiesfelder Wald",km:"14 km",hm:"120 hm",start:[51.5500,6.8333],parkplatz:"Rotbachstraße Waldparkplatz, 46535 Dinslaken",highlights:"Rotbach-Tal & Naturwald 🌲",restaurant:"🍴 Hiesfelder Mühle – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Heidhofsee Kirchhellen",km:"13 km",hm:"80 hm",start:[51.5833,6.9167],parkplatz:"Heidhof Großparkplatz, 46244 Bottrop",highlights:"Waldspielplatz & Natursee 🌊",restaurant:"🍴 Heidhof Kiosk Bottrop – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Tetraeder Bottrop",km:"10 km",hm:"70 hm",start:[51.5250,6.9583],parkplatz:"Beckstraße Großparkplatz, 46238 Bottrop",highlights:"Haldenereignis & Aussicht 🏗️",restaurant:"🍴 Lohnhalle Bottrop – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Walsumer Rheinaue",km:"12 km",hm:"40 hm",start:[51.5333,6.7000],parkplatz:"Rheinstraße Großparkplatz, 47179 Duisburg",highlights:"Storchennester & Rheindeiche 🦢",restaurant:"🍴 Rheinstraße Gastro Duisburg – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Sechs-Seen-Platte",km:"14 km",hm:"60 hm",start:[51.3833,6.7833],parkplatz:"Kalkweg Großparkplatz, 47279 Duisburg",highlights:"Aussichtsturm & Seenlandschaft 🌊",restaurant:"🍴 Wolfssee Gastro Duisburg – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Linnicher Wald",km:"13 km",hm:"90 hm",start:[50.9833,6.3000],parkplatz:"Rurstraße Wanderparkplatz, 52441 Linnich",highlights:"Rur-Auen & Naturwald 🌿",restaurant:"🍴 Rur-Blick Linnich – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Jülicher Brückenkopf",km:"11 km",hm:"60 hm",start:[50.9167,6.3500],parkplatz:"Rurauenpark Großparkplatz, 52428 Jülich",highlights:"Festungsanlage & Tierpark 🏟️",restaurant:"🍴 Casino Jülich – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Blausteinsee",km:"12 km",hm:"70 hm",start:[50.8333,6.2500],parkplatz:"Seeufer Großparkplatz, 52249 Eschweiler",highlights:"Seepromenade & Wassersport 🌊",restaurant:"🍴 Seehaus Eschweiler – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Grevenbroicher Schlosspark",km:"13 km",hm:"60 hm",start:[51.0833,6.5833],parkplatz:"Schlossstraße Großparkplatz, 41515 Grevenbroich",highlights:"Landesgartenschau-Gelände & Park 🌸",restaurant:"🍴 Museumscafé Grevenbroich – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"}
+],
+mittel:[
+{name:"Altenberger Dom",km:"15 km",hm:"280 hm",start:[51.0550,7.1333],parkplatz:"Hauptstraße 6, 51519 Odenthal",highlights:"Märchenwald & gotischer Dom ⛪",restaurant:"🍴 Küchenhof Odenthal – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Drachenfels Siebengebirge",km:"13 km",hm:"320 hm",start:[50.6650,7.2100],parkplatz:"Drachenfelsstraße Großparkplatz, 53639 Königswinter",highlights:"Burgruine & Rheinblick 🐉",restaurant:"🍴 Felders am Drachenfels – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Kloster Maria Laach",km:"13 km",hm:"180 hm",start:[50.4000,7.2667],parkplatz:"Am Laacher See Großparkplatz, 56653 Glees",highlights:"Vulkansee & Benediktinerabtei 🌋",restaurant:"🍴 Klostergaststätte Maria Laach – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Eifel Monschau Altstadt",km:"13 km",hm:"260 hm",start:[50.5583,6.2417],parkplatz:"Außenparkplatz Monschau, 52156 Monschau",highlights:"Fachwerkhäuser & Burg Monschau 🏘️",restaurant:"🍴 Historisches Café Monschau – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Rurtalsperre Schwammenauel",km:"14 km",hm:"200 hm",start:[50.6333,6.4167],parkplatz:"Seeuferstraße Großparkplatz, 52152 Simmerath",highlights:"Größte Talsperre NRWs 💧",restaurant:"🍴 Seerestaurant Rurtal – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 150m)"},
+{name:"Eifel Nürburgring Umgebung",km:"14 km",hm:"300 hm",start:[50.3333,6.9500],parkplatz:"Nürburg Wanderparkplatz, 53520 Adenau",highlights:"Burg Nürburg & Eifellandschaft 🏰",restaurant:"🍴 Burgschänke Nürburg – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Eifel Gemündener Maar",km:"12 km",hm:"220 hm",start:[50.2167,6.9000],parkplatz:"Maarseeweg Wanderparkplatz, 54550 Daun",highlights:"Vulkanmaare & Kraterseen 🌊",restaurant:"🍴 Maarseerestaurant Daun – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Aachener Stadtwald Dreiländereck",km:"13 km",hm:"180 hm",start:[50.7333,6.0833],parkplatz:"Stadtwald Großparkplatz, 52074 Aachen",highlights:"Dreiländereck DE-NL-BE 🏛️",restaurant:"🍴 Waldrestaurant Aachen – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Sauerland Biggesee",km:"14 km",hm:"250 hm",start:[51.0333,7.9000],parkplatz:"Seestraße Großparkplatz, 57439 Attendorn",highlights:"Biggesee & Hanseatisches Attendorn 💧",restaurant:"🍴 Seerestaurant Biggesee Attendorn – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Sauerland Möhnesee",km:"13 km",hm:"180 hm",start:[51.4833,8.0667],parkplatz:"Seeweg Großparkplatz, 59519 Möhnesee",highlights:"Staumauer & Sauerländer Wälder 💧",restaurant:"🍴 Seeblick Möhnesee – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 150m)"},
+{name:"Sauerland Rothaarsteig",km:"14 km",hm:"380 hm",start:[51.1833,8.4333],parkplatz:"Kahler Asten Großparkplatz, 59955 Winterberg",highlights:"Kahler Asten höchster Berg 🏔️",restaurant:"🍴 Berghotel Kahler Asten – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Teutoburger Wald Externsteine",km:"13 km",hm:"220 hm",start:[51.8667,8.9167],parkplatz:"Externsteine Großparkplatz, 32805 Horn-Bad Meinberg",highlights:"Mystische Felsformationen 🪨",restaurant:"🍴 Waldgasthof Externsteine – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Teutoburger Wald Hermannsdenkmal",km:"12 km",hm:"260 hm",start:[51.9167,8.8333],parkplatz:"Grotenburg Großparkplatz, 32760 Detmold",highlights:"Hermannsdenkmal & Panorama 🗿",restaurant:"🍴 Gasthaus Hermannshöhe Detmold – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 200m)"},
+{name:"Münsterland Schloss Nordkirchen",km:"13 km",hm:"60 hm",start:[51.7333,7.5167],parkplatz:"Schloßstraße Großparkplatz, 59394 Nordkirchen",highlights:"Versailles des Münsterlandes 🏯",restaurant:"🍴 Schlossrestaurant Nordkirchen – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Münsterland Schloss Vischering",km:"12 km",hm:"70 hm",start:[51.6500,7.5167],parkplatz:"Berenbrock 1, 59348 Lüdinghausen",highlights:"Wasserburg & Münsterland 🏰",restaurant:"🍴 Burgrestaurant Vischering – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Köln Königsforst",km:"14 km",hm:"160 hm",start:[50.9333,7.1667],parkplatz:"Königsforst Großparkplatz, 51147 Köln",highlights:"Stille Wälder & Bergisches Land 🌲",restaurant:"🍴 Waldgasthof Königsforst Köln – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Ahr Rotweinwanderweg",km:"14 km",hm:"340 hm",start:[50.5333,6.9500],parkplatz:"Bachstraße Wanderparkplatz, 53505 Altenahr",highlights:"Weinberge & Burg Are 🍷",restaurant:"🍴 Weingut Altenahr – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Bergisches Land Schloss Burg",km:"13 km",hm:"280 hm",start:[51.1167,7.2833],parkplatz:"Schloss Burg Großparkplatz, 42659 Solingen",highlights:"Schloss Burg & Fachwerk 🏰",restaurant:"🍴 Burgrestaurant Schloss Burg Solingen – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Eifel Vulkaneifel Strohn",km:"13 km",hm:"200 hm",start:[50.1333,6.9667],parkplatz:"Vulkanstraße Wanderparkplatz, 54558 Strohn",highlights:"Versteinerte Lava & Maare 🌋",restaurant:"🍴 Vulkan Gasthof Strohn – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Belgien Hohes Venn",km:"14 km",hm:"160 hm",start:[50.5000,6.1000],parkplatz:"Signal de Botrange Großparkplatz, B-4950 Waimes",highlights:"Höchster Punkt Belgiens & Moorland 🌿",restaurant:"🍴 Naturzentrum Botrange – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Belgien Ardennen Amel",km:"13 km",hm:"220 hm",start:[50.3500,6.1833],parkplatz:"Dorfplatz Wanderparkplatz, B-4770 Amel",highlights:"Ardennen & stille Dörfer 🌲",restaurant:"🍴 Ardennengasthof Amel – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Belgien Eupener Stausee",km:"12 km",hm:"180 hm",start:[50.6333,6.0333],parkplatz:"Seeufer Großparkplatz, B-4700 Eupen",highlights:"Eupener Stausee & Ostkantone 💧",restaurant:"🍴 Seerestaurant Eupen – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 200m)"},
+{name:"Niederlande Nijmegen Waalblick",km:"13 km",hm:"100 hm",start:[51.8333,5.8667],parkplatz:"Waalkade Großparkplatz, NL-6511 Nijmegen",highlights:"Historisches Nijmegen & Fluss 🌊",restaurant:"🍴 Waalblick Restaurant Nijmegen – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Niederlande Arnhem Veluwezoom",km:"14 km",hm:"200 hm",start:[51.9833,5.9500],parkplatz:"Veluwezoom Großparkplatz, NL-6991 Rheden",highlights:"Nationalpark & Heidelandschaft 🌿",restaurant:"🍴 Parkrestaurant Veluwezoom – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Niederlande Maastricht Altstadt",km:"12 km",hm:"120 hm",start:[50.8500,5.6833],parkplatz:"Centrum Großparkplatz, NL-6211 Maastricht",highlights:"Historische Altstadt & Maasblicke 🏛️",restaurant:"🍴 Grand Café Maastricht – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Niederlande Valkenburg Burgruine",km:"13 km",hm:"240 hm",start:[50.8667,5.8333],parkplatz:"Centrum Großparkplatz, NL-6301 Valkenburg",highlights:"Burgruine & Limburgische Hügel 🏰",restaurant:"🍴 Burgcafé Valkenburg – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Niederlande Hoge Veluwe",km:"14 km",hm:"140 hm",start:[52.0833,5.8333],parkplatz:"Otterlo Großparkplatz, NL-6731 Otterlo",highlights:"Heide & Sanddünen & Kröller-Müller 🎨",restaurant:"🍴 Parkrestaurant Hoge Veluwe – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Eifel Prümer Abtei",km:"13 km",hm:"180 hm",start:[50.2000,6.4167],parkplatz:"Hahnplatz Wanderparkplatz, 54595 Prüm",highlights:"Prümer Abtei & Eifelsteig ⛪",restaurant:"🍴 Abteirestaurant Prüm – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Sauerland Arnsberger Wald",km:"13 km",hm:"220 hm",start:[51.3833,8.0667],parkplatz:"Waldweg Großparkplatz, 59821 Arnsberg",highlights:"Ruhrtal & historisches Arnsberg 🌲",restaurant:"🍴 Waldgasthof Arnsberg – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Eifel Gerolsteiner Dolomiten",km:"13 km",hm:"260 hm",start:[50.2167,6.6500],parkplatz:"Kasselburg Wanderparkplatz, 54568 Gerolstein",highlights:"Felsformationen & Kasselburg 🪨",restaurant:"🍴 Burgrestaurant Gerolstein – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Belgien Lüttich Maastal",km:"12 km",hm:"160 hm",start:[50.6333,5.5667],parkplatz:"Maastal Großparkplatz, B-4000 Lüttich",highlights:"Historische Kirchen & Maastal 🏛️",restaurant:"🍴 Brasserie Maas Lüttich – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Belgien Spa Ardennen",km:"13 km",hm:"200 hm",start:[50.4833,5.8667],parkplatz:"Lac de Warfaaz Großparkplatz, B-4900 Spa",highlights:"Quellenstadt Spa & Wälder 🌲",restaurant:"🍴 Brasserie du Lac Spa – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 200m)"},
+{name:"Bergisches Land Toelleturm",km:"13 km",hm:"240 hm",start:[51.2500,7.2000],parkplatz:"Toelleturm Waldparkplatz, 42349 Wuppertal",highlights:"Panoramaaussicht & Wuppertaler Wald ⛰️",restaurant:"🍴 Bergrestaurant Toelleturm Wuppertal – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Sauerland Sorpesee",km:"13 km",hm:"200 hm",start:[51.3000,8.0000],parkplatz:"Seeufer Großparkplatz, 59846 Sundern",highlights:"Sorpesee & Strandatmosphäre 💧",restaurant:"🍴 Strandbad Sorpesee – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Teutoburger Wald Varusschlacht",km:"14 km",hm:"180 hm",start:[52.0167,8.7667],parkplatz:"Kalkriese 1 Großparkplatz, 49565 Bramsche",highlights:"Varusschlacht Museum & Natur 🗿",restaurant:"🍴 Museum Gasthaus Kalkriese – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Eifel Hillesheim Kylltal",km:"12 km",hm:"200 hm",start:[50.2833,6.6667],parkplatz:"Stadtmauer Wanderparkplatz, 54576 Hillesheim",highlights:"Mittelalterliche Stadtmauer 🏘️",restaurant:"🍴 Stadtmauercafé Hillesheim – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Sauerland Hennesee",km:"13 km",hm:"220 hm",start:[51.3500,8.2833],parkplatz:"Hennesee Großparkplatz, 59872 Meschede",highlights:"Staumauer & Sauerländer Wälder 💧",restaurant:"🍴 Seeblick Hennesee Meschede – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 200m)"},
+{name:"Münsterland Havixbeck",km:"12 km",hm:"80 hm",start:[51.9833,7.4000],parkplatz:"Schloßstraße Großparkplatz, 48329 Havixbeck",highlights:"Schloss Havixbeck & Parklandschaft 🏰",restaurant:"🍴 Landgasthof Havixbeck – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Eifel Schneifel Höhenweg",km:"14 km",hm:"280 hm",start:[50.2500,6.3167],parkplatz:"Schneifelforsthaus Wanderparkplatz, 54617 Schneifel",highlights:"Höchster Punkt der Eifel ⛰️",restaurant:"🍴 Forsthaus Schneifel – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Köln Stadtwald Seen",km:"13 km",hm:"100 hm",start:[50.8833,6.8500],parkplatz:"Stadtwald Großparkplatz, 50935 Köln",highlights:"Köln-Stadtwald & Naturseen 🌲",restaurant:"🍴 Waldgasthof Stadtwald Köln – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 200m)"},
+{name:"Wahner Heide",km:"14 km",hm:"120 hm",start:[50.9167,7.1333],parkplatz:"Heideroute Großparkplatz, 53842 Troisdorf",highlights:"Naturschutzgebiet & Heidelandschaft 🌿",restaurant:"🍴 Heidekrug Wahner Heide – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Niederlande Roermond Maasplassen",km:"14 km",hm:"60 hm",start:[51.1000,5.9667],parkplatz:"Maasplassen Großparkplatz, NL-6041 Roermond",highlights:"Südliche Maasplassen & Naturschutz 🦢",restaurant:"🍴 Wassersport Café Roermond – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Eifel Burg Kerpen",km:"13 km",hm:"240 hm",start:[50.3167,6.6833],parkplatz:"Burgstraße Wanderparkplatz, 54578 Kerpen Eifel",highlights:"Burg Kerpen & Alfbachtal 🏰",restaurant:"🍴 Burgcafé Kerpen Eifel – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Bergisches Land Dhünntalsperre",km:"14 km",hm:"260 hm",start:[51.1167,7.1833],parkplatz:"Stauseeallee Großparkplatz, 51371 Leverkusen",highlights:"Dhünntalsperre & Bergisches Land 💧",restaurant:"🍴 Seeblick Dhünn Leverkusen – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Münsterland Burgsteinfurt",km:"12 km",hm:"80 hm",start:[52.1500,7.3333],parkplatz:"Schloßpark Großparkplatz, 48565 Steinfurt",highlights:"Schloss Burgsteinfurt & Park 🏰",restaurant:"🍴 Schlosscafé Steinfurt – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"}
+],
+fern:[
+{name:"Mosel Burg Eltz Rundweg",km:"14 km",hm:"380 hm",start:[50.2000,7.3333],parkplatz:"Münstermaifeld Wanderparkplatz, 56294 Münstermaifeld",highlights:"Burg Eltz schönste Burg Deutschlands 🏰",restaurant:"🍴 Burgschenke Eltz – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Mosel Cochem Weinberge",km:"13 km",hm:"320 hm",start:[50.1500,7.1667],parkplatz:"Moselpromenade Großparkplatz, 56812 Cochem",highlights:"Reichsburg Cochem & Weinberge 🍷",restaurant:"🍴 Weingut am Markt Cochem – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Koblenz Deutsches Eck",km:"13 km",hm:"280 hm",start:[50.3667,7.6000],parkplatz:"Deutsches Eck Großparkplatz, 56068 Koblenz",highlights:"Deutsches Eck & Festung Ehrenbreitstein 🏛️",restaurant:"🍴 Festungsrestaurant Ehrenbreitstein Koblenz – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Westerwald Druidenstein",km:"14 km",hm:"300 hm",start:[50.6833,7.8167],parkplatz:"Druidenstein Wanderparkplatz, 57548 Kirchen",highlights:"Druidenstein & Basaltfelsen 🪨",restaurant:"🍴 Gasthaus Druidenstein Kirchen – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Siegerland Rothaargebirge",km:"13 km",hm:"360 hm",start:[51.0000,8.1000],parkplatz:"Hilchenbach Wanderparkplatz, 57271 Hilchenbach",highlights:"Rothaargebirge & Panorama ⛰️",restaurant:"🍴 Berghotel Hilchenbach – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Siegerland Freudenberg Altstadt",km:"12 km",hm:"240 hm",start:[50.8833,7.8667],parkplatz:"Altstadt Großparkplatz, 57258 Freudenberg",highlights:"Historische Fachwerk-Altstadt 🏘️",restaurant:"🍴 Fachwerkschenke Freudenberg – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Trier Porta Nigra Mosel",km:"12 km",hm:"200 hm",start:[49.7500,6.6333],parkplatz:"Moselufer Großparkplatz, 54290 Trier",highlights:"Porta Nigra & Römerstadt 🏛️",restaurant:"🍴 Zum Domstein Trier – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Hunsrück Erbeskopf Rundweg",km:"14 km",hm:"340 hm",start:[49.7333,7.0667],parkplatz:"Erbeskopf Großparkplatz, 54426 Thalfang",highlights:"Höchster Berg Rheinland-Pfalz ⛰️",restaurant:"🍴 Berghotel Erbeskopf Thalfang – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Rhein Loreley Panoramaweg",km:"14 km",hm:"300 hm",start:[50.1333,7.7333],parkplatz:"Loreley Plateau Großparkplatz, 56346 St. Goarshausen",highlights:"Loreley & spektakuläre Rheinblicke 🌊",restaurant:"🍴 Loreley Aussichtsrestaurant St. Goarshausen – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Eifel Manderscheid Burgen",km:"12 km",hm:"280 hm",start:[50.0833,6.8167],parkplatz:"Manderscheid Wanderparkplatz, 54531 Manderscheid",highlights:"Doppelburg Manderscheid & Maarlandschaft 🏯",restaurant:"🍴 Eifelgasthof Manderscheid – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Ahr Bad Neuenahr Weinpfad",km:"13 km",hm:"260 hm",start:[50.5500,7.1167],parkplatz:"Kurpark Großparkplatz, 53474 Bad Neuenahr",highlights:"Weinpfad & Kurstadt 🍷",restaurant:"🍴 Kurpark Café Bad Neuenahr – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Westerwald Nassau Lahn",km:"13 km",hm:"220 hm",start:[50.3167,7.8000],parkplatz:"Nassau Wanderparkplatz, 56377 Nassau",highlights:"Burg Nassau & Lahnauen 🏰",restaurant:"🍴 Lahntal Gastro Nassau – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Belgien Namur Zitadelle",km:"13 km",hm:"240 hm",start:[50.4667,4.8667],parkplatz:"Citadelle Großparkplatz, B-5000 Namur",highlights:"Zitadelle Namur & Maasblicke 🏰",restaurant:"🍴 Brasserie de la Citadelle Namur – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Belgien Durbuy Kleinste Stadt",km:"14 km",hm:"260 hm",start:[50.3500,5.4500],parkplatz:"Durbuy Großparkplatz, B-6940 Durbuy",highlights:"Kleinste Stadt der Welt & Ardennen 🏘️",restaurant:"🍴 Brasserie Durbuy – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Niederlande Veluwe Posbank",km:"14 km",hm:"180 hm",start:[52.0333,6.0333],parkplatz:"Posbank Großparkplatz, NL-6956 Rheden",highlights:"Posbank Heide & Panorama 🌿",restaurant:"🍴 Theeschenk Posbank – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Luxemburg Müllerthal",km:"14 km",hm:"300 hm",start:[49.7667,6.3667],parkplatz:"Mullerthal Großparkplatz, L-6245 Mullerthal",highlights:"Müllerthal Kleine Schweiz & Felsen 🪨",restaurant:"🍴 Hotel Restaurant Mullerthal – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Sauerland Brilon Upland",km:"13 km",hm:"280 hm",start:[51.3833,8.5667],parkplatz:"Brilon Wanderparkplatz, 59929 Brilon",highlights:"Brilon Upland & Diemelsee 🌲",restaurant:"🍴 Stadthotel Brilon – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Rhön Wasserkuppe Rundweg",km:"14 km",hm:"360 hm",start:[50.4833,9.9333],parkplatz:"Wasserkuppe Großparkplatz, 36129 Gersfeld",highlights:"Wasserkuppe höchster Berg Hessens ⛰️",restaurant:"🍴 Berghotel Wasserkuppe Gersfeld – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Lahn Weilburg Schloss",km:"13 km",hm:"200 hm",start:[50.4833,8.2667],parkplatz:"Schlossberg Großparkplatz, 35781 Weilburg",highlights:"Schloss Weilburg & Lahnblick 🏰",restaurant:"🍴 Schlossrestaurant Weilburg – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Hunsrück Idarwald Panorama",km:"13 km",hm:"280 hm",start:[49.8833,7.2667],parkplatz:"Idar-Oberstein Großparkplatz, 55743 Idar-Oberstein",highlights:"Felsenkirche & Idarwald 🏛️",restaurant:"🍴 Felsenkirchen Gastro Idar-Oberstein – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Eifel Bitburger Land",km:"12 km",hm:"180 hm",start:[49.9667,6.5167],parkplatz:"Bitburg Großparkplatz, 54634 Bitburg",highlights:"Römerpfad & Bitburger Land 🏛️",restaurant:"🍴 Bitburger Brauhaus – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 200m)"},
+{name:"Westerwald Montabaur Schloss",km:"13 km",hm:"260 hm",start:[50.4333,7.8333],parkplatz:"Schlossberg Großparkplatz, 56410 Montabaur",highlights:"Schloss Montabaur & Wälder 🏰",restaurant:"🍴 Schlosshotel Montabaur – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Belgien Bastogne Ardennen",km:"13 km",hm:"200 hm",start:[50.0000,5.7167],parkplatz:"Bastogne Großparkplatz, B-6600 Bastogne",highlights:"Ardennen & historisches Bastogne 🌲",restaurant:"🍴 Brasserie Léon Bastogne – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Belgien Han-sur-Lesse Höhlen",km:"12 km",hm:"220 hm",start:[50.1167,5.1833],parkplatz:"Han-sur-Lesse Großparkplatz, B-5580 Han-sur-Lesse",highlights:"Tropfsteinhöhlen & Wildreservat 🦌",restaurant:"🍴 Brasserie de la Lesse – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Mosel Bernkastel-Kues",km:"13 km",hm:"300 hm",start:[49.9167,7.0667],parkplatz:"Bernkastel Großparkplatz, 54470 Bernkastel-Kues",highlights:"Burg Landshut & Moselweinberge 🍷",restaurant:"🍴 Weingut Doktor Bernkastel-Kues – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Hunsrück Soonwald Panorama",km:"14 km",hm:"260 hm",start:[49.9167,7.5833],parkplatz:"Soonwald Großparkplatz, 55469 Simmern",highlights:"Soonwald & Hunsrücksteig 🌲",restaurant:"🍴 Soonwald Gastro Simmern – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Belgien Dinant Zitadelle",km:"12 km",hm:"260 hm",start:[50.2667,4.9167],parkplatz:"Dinant Großparkplatz, B-5500 Dinant",highlights:"Zitadelle Dinant & Maasblicke 🏰",restaurant:"🍴 Brasserie Dinant – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Sauerland Schmallenberg",km:"14 km",hm:"300 hm",start:[51.1500,8.2833],parkplatz:"Schmallenberg Großparkplatz, 57392 Schmallenberg",highlights:"Schmallenberger Höhen & Wälder 🌲",restaurant:"🍴 Landgasthof Schmallenberg – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Niederlande Utrecht Hügelrücken",km:"13 km",hm:"160 hm",start:[52.0833,5.1167],parkplatz:"Utrechtse Heuvelrug Großparkplatz, NL-3700 Zeist",highlights:"Utrechtse Heuvelrug & Heidelandschaft 🌿",restaurant:"🍴 Kasteel Kerckebosch Zeist – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Siegerland Kreuztal Wälder",km:"13 km",hm:"280 hm",start:[51.0333,7.9833],parkplatz:"Ferndorf Wanderparkplatz, 57223 Kreuztal",highlights:"Rothaarsteig Etappe & Wälder 🌲",restaurant:"🍴 Waldgasthof Kreuztal – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Lahn Balduinstein Burg",km:"12 km",hm:"240 hm",start:[50.3667,7.9333],parkplatz:"Balduinstein Wanderparkplatz, 65558 Balduinstein",highlights:"Burg Schaumburg & Lahntal 🏰",restaurant:"🍴 Burg Schaumburg Gastro Balduinstein – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Niederlande Twente Schloss Twickel",km:"13 km",hm:"100 hm",start:[52.2500,6.6333],parkplatz:"Delden Großparkplatz, NL-7491 Delden",highlights:"Schloss Twickel & Parklandschaft 🏰",restaurant:"🍴 Landgoed Twickel Café Delden – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Eifel Prüm Schneifel",km:"13 km",hm:"260 hm",start:[50.2333,6.3500],parkplatz:"Schneifel Wanderparkplatz, 54595 Prüm",highlights:"Schneifelrundweg & Hocheifel ⛰️",restaurant:"🍴 Forsthaus Schneifel Prüm – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Westerwald Altenkirchen",km:"13 km",hm:"220 hm",start:[50.6833,7.6333],parkplatz:"Altenkirchen Großparkplatz, 57610 Altenkirchen",highlights:"Weserwaldsteig & stille Wälder 🌲",restaurant:"🍴 Waldgasthof Altenkirchen – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Rhein Bacharach Weinpfad",km:"12 km",hm:"280 hm",start:[50.0500,7.7667],parkplatz:"Bacharach Großparkplatz, 55422 Bacharach",highlights:"Burg Stahleck & Rheinweinberge 🍷",restaurant:"🍴 Weingut Bacharach – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Niederlande Overijssel Salland",km:"13 km",hm:"140 hm",start:[52.4500,6.3167],parkplatz:"Holten Großparkplatz, NL-7451 Holten",highlights:"Sallandse Heuvelrug & Heide 🌿",restaurant:"🍴 Landgoed Holten – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Sauerland Winterberg Upland",km:"14 km",hm:"340 hm",start:[51.1833,8.5333],parkplatz:"Neuastenberg Großparkplatz, 59955 Winterberg",highlights:"Upland & Panoramawege ⛰️",restaurant:"🍴 Berghotel Neuastenberg Winterberg – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Belgien Spa Francorchamps",km:"14 km",hm:"240 hm",start:[50.4333,5.9667],parkplatz:"Francorchamps Großparkplatz, B-4970 Francorchamps",highlights:"Ardennen Wälder & Rennstrecke 🌲",restaurant:"🍴 Brasserie Francorchamps – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Rothaargebirge Hallenberg",km:"14 km",hm:"300 hm",start:[51.1500,8.4833],parkplatz:"Hallenberg Großparkplatz, 59969 Hallenberg",highlights:"Hallenberg & Rothaarsteig 🌲",restaurant:"🍴 Landgasthof Hallenberg – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Mosel Zell am Mosel",km:"13 km",hm:"280 hm",start:[50.0333,7.1833],parkplatz:"Moselpromenade Großparkplatz, 56856 Zell",highlights:"Schwarze Katz Weinberge & Mosel 🍷",restaurant:"🍴 Weinstube Schwarze Katz Zell – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Niederlande Den Bosch Moerputten",km:"12 km",hm:"60 hm",start:[51.6833,5.3167],parkplatz:"Bossche Broek Großparkplatz, NL-5231 Den Bosch",highlights:"Moorbrücke & Naturschutz 🌿",restaurant:"🍴 Grand Café Den Bosch – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Eifel Gerolstein Felsenpfade",km:"13 km",hm:"260 hm",start:[50.2333,6.6667],parkplatz:"Gerolstein Großparkplatz, 54568 Gerolstein",highlights:"Munterley & Auberg Felsen 🪨",restaurant:"🍴 Felsenrestaurant Gerolstein – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Hunsrück Boppard Rheinschleife",km:"14 km",hm:"320 hm",start:[50.2333,7.5833],parkplatz:"Boppard Großparkplatz, 56154 Boppard",highlights:"Rheinschleife Boppard & Aussicht 🌊",restaurant:"🍴 Weinhaus Boppard – Sa. ab 15 Uhr | auf der Route (ca. 300m)"}
+]};
+function ladeStimmen(){var d=localStorage.getItem('wf_stimmen');return d?JSON.parse(d):{tour0:0,tour1:0,tour2:0,gesamt:0}}
+function speichereStimmen(s){localStorage.setItem('wf_stimmen',JSON.stringify(s))}
+function hatAbgestimmt(){return localStorage.getItem('wf_hat_abgestimmt')==='ja'}
+function abstimmen(i){if(hatAbgestimmt())return;var s=ladeStimmen();s['tour'+i]++;s.gesamt++;speichereStimmen(s);localStorage.setItem('wf_hat_abgestimmt','ja');zeigeAbstimmung()}
+function resetStimmen(){var pw=document.getElementById('reset-pw').value;if(pw===RESET_PASSWORT){localStorage.removeItem('wf_stimmen');localStorage.removeItem('wf_hat_abgestimmt');document.getElementById('reset-pw').value='';zeigeAbstimmung();alert('✅ Abstimmung zurückgesetzt!')}else{alert('❌ Falsches Passwort!')}}
+function zeigeAbstimmung(){
+if(aktuelleTouren.length===0)return;
+var s=ladeStimmen(),ab=hatAbgestimmt();
+var fc=['#2d6a2d','#00008B','#e07b00'];
+var h='<div class="abstimmung-box"><h3>🗳️ Für welche Tour stimmt ihr ab?</h3>';
+if(!ab){aktuelleTouren.forEach(function(t,i){h+='<button class="vote-btn" onclick="abstimmen('+i+')">👍 Tour '+(i+1)+': '+t.name+'</button>';});}
+else{
+var g=s.gesamt||1;
+h+='<div class="chart-container">';
+aktuelleTouren.forEach(function(t,i){
+var a=s['tour'+i]||0,p=Math.round((a/g)*100);
+h+='<div class="chart-col"><div class="chart-label-top"><div class="chart-pct">'+p+'%</div><div class="chart-votes">'+a+' Stimmen</div></div><div class="chart-bar" style="height:'+p+'%;background:'+fc[i]+';"></div><div class="chart-name">Tour '+(i+1)+'<br><b>'+t.name+'</b></div></div>';
+});
+h+='</div><div class="vote-gesamt">👥 Gesamt: '+g+' Stimme(n)</div><div class="bereits-abgestimmt">✅ Du hast bereits abgestimmt!</div>';
+}
+h+='<div class="reset-bereich"><p style="color:#aaa;margin-bottom:6px;font-size:12px;">🔐 Nur für den Besitzer:</p><input type="password" id="reset-pw" placeholder="Passwort"/><button class="reset-btn" onclick="resetStimmen()">🔄 Reset</button></div></div>';
+document.getElementById('abstimmung-bereich').innerHTML=h;
+}
+function zeigeTour(bereich){
+var pool=touren[bereich];
+if(!pool||pool.length===0){document.getElementById('info').innerText='⏳ Diese Touren folgen bald!';document.getElementById('touren-liste').innerHTML='';document.getElementById('abstimmung-bereich').innerHTML='';return;}
+aktiveMarker.forEach(m=>map.removeLayer(m));aktiveMarker=[];
+var si=rotationState[bereich];aktuelleTouren=[];
+for(let i=0;i<Math.min(pool.length,3);i++)aktuelleTouren.push(pool[(si+i)%pool.length]);
+rotationState[bereich]=(si+3)%pool.length;
+var bounds=[],lh='';
+aktuelleTouren.forEach(tour=>{
+var icon=L.divIcon({className:'custom-div-icon',html:'<div class="custom-marker" style="background-color:'+farben[bereich]+';"></div>',iconSize:[26,26],iconAnchor:[13,13]});
+var m=L.marker(tour.start,{icon:icon}).addTo(map);
+m.bindPopup('<div class="popup-info"><h3>'+tour.name+'</h3><p><b>📏 Strecke:</b> '+tour.km+' | <b>⛰️ HM:</b> '+tour.hm+'</p><p><b>✨ Highlights:</b> '+tour.highlights+'</p><p><b>🍴 Einkehr:</b> '+tour.restaurant+'</p><p><b>🅿️ Navi:</b><br><span class="popup-navi">'+tour.parkplatz+'</span></p></div>');
+aktiveMarker.push(m);bounds.push(tour.start);
+var rn=getRestaurantName(tour.restaurant);
+lh+='<div class="tour-karte '+bereich+'"><h3>🥾 '+tour.name+' <span class="hm-badge">⛰️ '+tour.hm+'</span></h3>';
+lh+='<p><b>📏</b> '+tour.km+' | <b>⛰️</b> '+tour.hm+'</p>';
+lh+='<p><b>🅿️ Navi:</b></p><span class="address-box">📍 '+tour.parkplatz+'</span>';
+lh+='<span class="park-hinweis">⚠️ Parkgebühren vor Ort prüfen</span>';
+lh+='<p><b>✨</b> '+tour.highlights+'</p>';
+lh+='<p><b>🍴</b> '+tour.restaurant+'</p>';
+lh+='<a href="https://www.google.com/search?q='+encodeURIComponent(rn)+'" target="_blank" style="display:inline-block;margin-top:6px;padding:5px 12px;background:#c0392b;color:white;border-radius:6px;font-size:12px;text-decoration:none;">🍽️ Speisekarte googeln</a></div>';
+});
+if(bounds.length>0)map.flyToBounds(bounds,{padding:[60,60],duration:1.5});
+document.getElementById('touren-liste').innerHTML=lh;
+document.getElementById('info').innerText='✅ 3 Touren gefunden! Nochmal klicken für andere Vorschläge.';
+zeigeAbstimmung();
+}
+if('serviceWorker' in navigator){navigator.serviceWorker.register('/sw.js').catch(function(){});}
 </script>
-
-<div id="impressum" style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc;">
-    Impressum: Peter Jaki | Kontakt: peterjaki@example.com | 2026 Parkplatz-Suche
-</div>
-
 </body>
 </html>
