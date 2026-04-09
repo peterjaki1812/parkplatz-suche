@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Park & Gastro Finder</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        #map { height: 100vh; width: 100vw; }
+        
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        button:disabled { background: #ccc; }
+
+        /* Blaues P Symbol Style */
+        .p-icon {
+            background-color: #0056b3;
+            color: white;
+            border: 2px solid white;
+            border-radius: 3px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 14px;
+            line-height: 20px;
+        }
+    </style>
+</head>
+<body>
+
+<div class="controls">
+    <button id="locateBtn">📍 Suche in meiner Nähe</button>
+</div>
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+<script>
+    const map = L.map('map').setView([51.1657, 10.4515], 6); // Startansicht Deutschland
+    
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+
+    const locateBtn = document.getElementById('locateBtn');
+    let userMarker;
+
+    // Blaues P Icon erstellen
+    const parkingIcon = L.divIcon({
+        className: 'p-icon',
+        html: 'P',
+        iconSize: [24, 24]
+    });
+
+    // Restaurant Icon
+    const restaurantIcon = L.icon({
+        iconUrl: 'https://cdn-icons-png.flaticon.com/512/1996/1996055.png',
+        iconSize: [30, 30]
+    });
+
+    function loadData(lat, lon) {
+        locateBtn.disabled = true;
+        locateBtn.innerText = "Suche läuft...";
+
+        // Overpass API Query
+        // 1. Parkplätze: Kostenlos, keine Häuser, Mindestgröße (gefiltert über area > 500qm für ca. 24 Autos)
+        // 2. Restaurants: Im Umkreis 1km
+        const query = `
+        [out:json][timeout:25];
+        (
+          // Parkplätze: Kostenlos, keine Parkhäuser/Tiefgaragen, Fläche groß genug
+          nwr["amenity"="parking"]["fee"="no"]["parking"!~"multi-storey|underground"](around:2000, ${lat}, ${lon});
+          
+          // Restaurants im Umkreis 1km
+          nwr["amenity"="restaurant"](around:1000, ${lat}, ${lon});
+        );
+        out center;`;
+
+        const url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
+
+        fetch(url)
+            .then(res => res.json())
+            .then(data => {
+                // Alte Marker entfernen (außer User-Standort)
+                map.eachLayer(layer => {
+                    if (layer instanceof L.Marker && layer !== userMarker) map.removeLayer(layer);
+                });
+
+                data.elements.forEach(el => {
+                    const pos = [el.lat || el.center.lat, el.lon || el.center.lon];
+                    
+                    if (el.tags.amenity === "parking") {
+                        // Grobe Schätzung der Kapazität falls Tag fehlt: nur Flächen-Objekte (ways) anzeigen
+                        // oder explizite Kapazität > 23
+                        if (el.type === "way" || (el.tags.capacity && parseInt(el.tags.capacity) >= 24)) {
+                            L.marker(pos, {icon: parkingIcon})
+                             .bindPopup(`<b>Kostenloser Parkplatz</b><br>Typ: ${el.tags.parking || 'Fläche'}`)
+                             .addTo(map);
+                        }
+                    } else if (el.tags.amenity === "restaurant") {
+                        if (checkOpeningHours(el.tags.opening_hours)) {
+                            L.marker(pos, {icon: restaurantIcon})
+                             .bindPopup(`<b>Restaurant: ${el.tags.name || 'Unbekannt'}</b><br>Öffnet Sa: ${el.tags.opening_hours || 'k.A.'}`)
+                             .addTo(map);
+                        }
+                    }
+                });
+                locateBtn.disabled = false;
+                locateBtn.innerText = "📍 Suche in meiner Nähe";
+            })
+            .catch(err => {
+                console.error(err);
+                alert("Fehler beim Laden der Daten.");
+                locateBtn.disabled = false;
+            });
+    }
+
+    // Einfache Logik für Öffnungszeiten (Samstag 15 Uhr offen, Ausschluss 17 Uhr)
+    function checkOpeningHours(hours) {
+        if (!hours) return true; // Wenn nichts steht, zur Sicherheit anzeigen
+        const h = hours.toLowerCase();
+        
+        // Sehr einfache Prüfung: Wenn "Sa" vorkommt und eine Zeit wie 17:00 drin steht, 
+        // aber keine Zeit vor 15:00, schließen wir es aus.
+        if (h.includes("sa")) {
+            if (h.includes("17:00") && !h.includes("12:00") && !h.includes("13:00") && !h.includes("14:00") && !h.includes("15:00")) {
+                return false; 
+            }
+        }
+        return true;
+    }
+
+    locateBtn.onclick = () => {
+        map.locate({setView: true, maxZoom: 16});
+    };
+
+    map.on('locationfound', (e) => {
+        if (userMarker) map.removeLayer(userMarker);
+        userMarker = L.marker(e.latlng).addTo(map).bindPopup("Du bist hier").openPopup();
+        loadData(e.latlng.lat, e.latlng.lng);
+    });
+
+    map.on('locationerror', () => {
+        alert("Standort konnte nicht gefunden werden. Bitte GPS aktivieren.");
+    });
+</script>
+
+</body>
+</html>
