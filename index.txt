@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Parken & Gastro Echtzeit</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <script src="https://unpkg.com/opening_hours@3.7.0/opening_hours.js"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
+        #map { height: 100vh; width: 100vw; }
+        .info-box {
+            position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; background: white; padding: 10px 20px;
+            border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            border: 2px solid #003399; font-weight: bold; text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div class="info-box">
+    <div id="status">Suche kostenlose Plätze & Gastro (2km)...</div>
+</div>
+
+<div id="map"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+    const map = L.map('map').setView([51.333, 6.562], 14);
+    const statusBox = document.getElementById('status');
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+
+    const iconParking = L.divIcon({ html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 28px;"></i>', className: 'custom-icon', iconSize: [28, 28], iconAnchor: [14, 14] });
+    const iconResto = L.divIcon({ html: '<i class="fa-solid fa-utensils" style="color: #2ecc71; font-size: 24px;"></i>', className: 'custom-icon', iconSize: [24, 24], iconAnchor: [12, 12] });
+    const iconIce = L.divIcon({ html: '<i class="fa-solid fa-ice-cream" style="color: #8e44ad; font-size: 24px;"></i>', className: 'custom-icon', iconSize: [24, 24], iconAnchor: [12, 12] });
+
+    map.locate({setView: true, maxZoom: 15});
+
+    map.on('locationfound', (e) => {
+        L.marker(e.latlng).addTo(map).bindPopup("Dein Standort");
+        fetchData(e.latlng.lat, e.latlng.lng);
+    });
+
+    async function fetchData(lat, lng) {
+        const radius = 2000;
+        // Suche nach kostenlosen Parkplätzen UND Gastro mit Zeiten
+        const query = `[out:json][timeout:30];(
+            node["amenity"="parking"](around:${radius},${lat},${lng});
+            way["amenity"="parking"](around:${radius},${lat},${lng});
+            node["amenity"~"restaurant|ice_cream"]["opening_hours"](around:${radius},${lat},${lng});
+        );out center;`;
+
+        try {
+            const response = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query));
+            const data = await response.json();
+            
+            data.elements.forEach(el => {
+                const pos = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lng];
+                let currentIcon = iconParking;
+                let title = el.tags.name || "Parkplatz";
+                let statusText = "";
+
+                // Parkplatz-Check (Kostenlos?)
+                if (el.tags.amenity === 'parking') {
+                    if (el.tags.fee === 'yes') return; // Kostenpflichtige ignorieren
+                    title = "Kostenloser Parkplatz";
+                }
+
+                // Gastro-Check (Öffnungszeiten)
+                if(el.tags.opening_hours) {
+                    try {
+                        const oh = new opening_hours(el.tags.opening_hours);
+                        const isOpen = oh.getState();
+                        statusText = isOpen ? 
+                            "<br><b style='color:green;'>✅ JETZT GEÖFFNET</b>" : 
+                            "<br><b style='color:red;'>❌ GERADE GESCHLOSSEN</b>";
+                    } catch(e) { statusText = "<br>Zeitangabe unklar"; }
+                }
+
+                if (el.tags.amenity === 'restaurant') {
+                    currentIcon = iconResto;
+                    title = el.tags.name || "Restaurant";
+                } else if (el.tags.amenity === 'ice_cream') {
+                    currentIcon = iconIce;
+                    title = el.tags.name || "Eisdiele";
+                }
+
+                L.marker(pos, {icon: currentIcon}).addTo(map).bindPopup(`<b>${title}</b>${statusText}`);
+            });
+            statusBox.innerHTML = "Bereit (2km Umkreis)";
+        } catch (err) {
+            statusBox.innerHTML = "Fehler beim Laden";
+        }
+    }
+</script>
+
+<div id="impressum" style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc;">
+    Impressum: Peter Jaki | Kontakt: peterjaki@example.com | 2026 Parkplatz-Suche
+</div>
+
+</body>
+</html>
