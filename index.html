@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Parken & Gastro Master</title>
+    <title>Parken & Gastro Stabil</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <script src="https://unpkg.com/opening_hours@3.7.0/opening_hours.js"></script>
@@ -30,9 +30,7 @@
     let markerGroup = L.layerGroup().addTo(map);
     let searchCircle = null;
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap'
-    }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
     const iconP = L.divIcon({ html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 26px;"></i>', className: 'custom-icon', iconAnchor: [13, 13] });
     const iconR = L.divIcon({ html: '<i class="fa-solid fa-utensils" style="color: #2ecc71; font-size: 22px;"></i>', className: 'custom-icon', iconAnchor: [11, 11] });
@@ -41,7 +39,6 @@
     map.locate({setView: true, maxZoom: 15});
     
     map.on('locationfound', (e) => {
-        L.marker(e.latlng).addTo(map).bindPopup("Dein Standort");
         startSuche();
     });
 
@@ -51,29 +48,26 @@
 
     async function startSuche() {
         const center = map.getCenter();
-        statusBox.innerHTML = "Suche läuft...";
+        statusBox.innerHTML = "Suche läuft (1km)...";
         statusBox.style.color = "black";
 
-        // Zeichne den blauen 2km Kreis
         if (searchCircle) map.removeLayer(searchCircle);
         searchCircle = L.circle(center, {
-            radius: 2000,
+            radius: 1000,
             color: '#003399',
-            fillOpacity: 0.05,
-            weight: 2,
-            interactive: false
+            fillOpacity: 0.1,
+            weight: 2
         }).addTo(map);
         
-        // Suche Punkte und Flächen-Mittelpunkte (center)
-        const query = `[out:json][timeout:30];(
-            node["amenity"="parking"]["access"!="private"](around:2000,${center.lat},${center.lng});
-            way["amenity"="parking"]["access"!="private"](around:2000,${center.lat},${center.lng});
-            node["amenity"~"restaurant|ice_cream"](around:2000,${center.lat},${center.lng});
+        // Stark vereinfachte Abfrage für maximale Stabilität
+        const query = `[out:json][timeout:20];(
+            node["amenity"="parking"](around:1000,${center.lat},${center.lng});
+            way["amenity"="parking"](around:1000,${center.lat},${center.lng});
+            node["amenity"~"restaurant|ice_cream"](around:1000,${center.lat},${center.lng});
         );out center;`;
 
         try {
             const resp = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query));
-            if (!resp.ok) throw new Error();
             const data = await resp.json();
             
             markerGroup.clearLayers();
@@ -85,8 +79,7 @@
                 let statusInfo = "";
 
                 if (el.tags.amenity === 'parking') {
-                    title = (el.tags.fee === 'no') ? "Kostenloser Parkplatz" : "Öffentlicher Parkplatz";
-                    icon = iconP;
+                    title = el.tags.fee === 'no' ? "Kostenlos Parken" : "Parkplatz";
                 } else {
                     if (el.tags.amenity === 'restaurant') icon = iconR;
                     if (el.tags.amenity === 'ice_cream') icon = iconI;
@@ -94,19 +87,17 @@
                     if(el.tags.opening_hours) {
                         try {
                             const oh = new opening_hours(el.tags.opening_hours);
-                            statusInfo = oh.getState() ? "<br><b style='color:green;'>✅ OFFEN</b>" : "<br><b style='color:red;'>❌ ZU</b>";
+                            statusInfo = oh.getState() ? "<br><b style='color:green;'>OFFEN</b>" : "<br><b style='color:red;'>ZU</b>";
                         } catch(e) { statusInfo = "<br>Zeit: " + el.tags.opening_hours; }
-                    } else {
-                        statusInfo = "<br>Keine Zeiten bekannt";
                     }
                 }
 
                 L.marker(pos, {icon: icon}).addTo(markerGroup).bindPopup(`<b>${title}</b>${statusInfo}`);
             });
-            statusBox.innerHTML = "Bereit (2km Radius)";
+            statusBox.innerHTML = "Bereit (1km Umkreis)";
             statusBox.style.color = "green";
         } catch (err) {
-            statusBox.innerHTML = "Datenbank-Pause... bitte warten";
+            statusBox.innerHTML = "Pause... bitte 10 Sek. warten";
             statusBox.style.color = "red";
         }
     }
