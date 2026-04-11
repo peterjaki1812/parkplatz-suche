@@ -3,45 +3,68 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ForestPark - Dein Wanderparkplatz-Finder</title>
+    <title>WanderPark - Wald-Finder</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', sans-serif; }
-        #map { height: 100vh; width: 100vw; }
-        
-        .search-box {
-            position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
-            z-index: 1000; display: flex; gap: 8px; background: white;
-            padding: 12px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-            width: 85%; max-width: 450px;
+        /* WICHTIG: HTML und Body müssen 100% Höhe haben */
+        html, body { 
+            margin: 0; 
+            padding: 0; 
+            height: 100%; 
+            width: 100%; 
+            overflow: hidden;
+        }
+
+        /* Die Karte MUSS eine explizite Höhe haben, sonst bleibt sie weiß */
+        #map { 
+            height: 100vh; 
+            width: 100vw; 
+            background: #e5e3df; /* Platzhalterfarbe während des Ladens */
         }
         
-        input { flex: 1; border: 1px solid #ccc; padding: 10px; border-radius: 6px; }
-        button { background: #2e7d32; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .search-box {
+            position: absolute; 
+            top: 20px; 
+            left: 50%; 
+            transform: translateX(-50%);
+            z-index: 2000; /* Muss höher als die Karte sein */
+            display: flex; 
+            gap: 10px; 
+            background: white;
+            padding: 15px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            width: 80%; 
+            max-width: 500px;
+        }
+        
+        input { flex: 1; border: 1px solid #ccc; padding: 12px; border-radius: 8px; font-size: 16px; }
+        button { background: #2e7d32; color: white; border: none; padding: 12px 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
         
         #loader {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 1000; background: #2e7d32; color: white; padding: 8px 20px;
-            border-radius: 25px; display: none; font-size: 14px; font-weight: bold;
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%);
+            z-index: 2000; background: rgba(46, 125, 50, 0.9); color: white; padding: 10px 25px;
+            border-radius: 30px; display: none; font-family: sans-serif; font-weight: bold;
         }
 
         .p-marker {
             background-color: #2e7d32; color: white; border: 2px solid white;
             border-radius: 50%; text-align: center; font-weight: bold;
-            font-size: 14px; line-height: 28px; width: 28px !important; height: 28px !important;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            font-size: 15px; line-height: 30px; width: 30px !important; height: 30px !important;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
         }
     </style>
 </head>
 <body>
 
     <div class="search-box">
-        <input type="text" id="target" placeholder="Waldgebiet oder Berg suchen...">
+        <input type="text" id="target" placeholder="Wald/Ort suchen...">
         <button onclick="manualSearch()">Suche</button>
     </div>
 
-    <div id="loader">Suche Wanderparkplätze im Umkreis...</div>
+    <div id="loader">Suche Parkplätze...</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -50,16 +73,27 @@
         let map, parkingLayer, lastPos = null, searchTimer;
 
         function init() {
-            // Fokus auf grüne Karte (Land/Wald)
-            map = L.map('map', { zoomControl: false }).setView([51.16, 10.45], 6);
+            // Karte erstellen
+            map = L.map('map', { 
+                zoomControl: false,
+                tap: false // Verhindert Klick-Probleme auf manchen Mobilgeräten
+            }).setView([51.16, 10.45], 6);
+
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            // HTTPS Kachel-Server
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '© OpenStreetMap'
+            }).addTo(map);
+
             parkingLayer = L.layerGroup().addTo(map);
 
-            map.locate({setView: true, maxZoom: 13});
+            // Standort finden
+            map.locate({setView: true, maxZoom: 14});
             map.on('locationfound', e => fetchData(e.latlng));
 
+            // Suche bei Verschieben
             map.on('moveend', () => {
                 clearTimeout(searchTimer);
                 searchTimer = setTimeout(() => fetchData(map.getCenter()), 1000);
@@ -73,31 +107,24 @@
             const data = await res.json();
             if (data.length > 0) {
                 const ll = L.latLng(data[0].lat, data[0].lon);
-                map.setView(ll, 13);
+                map.setView(ll, 14);
                 fetchData(ll);
             }
         }
 
         async function fetchData(ll) {
-            if (lastPos && map.distance(lastPos, ll) < 1000) return;
+            if (lastPos && map.distance(lastPos, ll) < 800) return;
             lastPos = ll;
 
             const loader = document.getElementById('loader');
             loader.style.display = 'block';
 
-            // SPEZIAL-QUERY FÜR WANDERPARKPLÄTZE:
-            // Sucht nach Punkten (nodes) und Flächen (ways), die explizit 
-            // Wander-Bezug haben oder im Wald als Parkplatz markiert sind.
+            // Filter für Wald/Wanderparkplätze auf dem Land
             const query = `
-                [out:json][timeout:30];
+                [out:json][timeout:25];
                 (
-                  // 1. Alle Parkplätze im 5km Radius, die nicht kostenpflichtig sind
-                  node["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
-                  way["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
-                  
-                  // 2. Gezielte Suche nach Wander-Tags
-                  node["parking"~"hiking|nature"](around:5000,${ll.lat},${ll.lng});
-                  way["parking"~"hiking|nature"](around:5000,${ll.lat},${ll.lng});
+                  node["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"](around:4000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"](around:4000,${ll.lat},${ll.lng});
                 );
                 out center;`;
 
@@ -110,25 +137,24 @@
                     const coords = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
                     const tags = el.tags;
                     
-                    // Filter: Wir ignorieren Parkplätze, die "street_side" (Straßenrand) sind, 
-                    // um echte Parkflächen im Wald zu bevorzugen.
-                    if(tags.parking === 'street_side') return;
+                    // Filter: Keine Parkbuchten am Straßenrand
+                    if(tags.parking === 'street_side' || tags.parking === 'lane') return;
 
                     let name = tags.name || "Wanderparkplatz";
-                    if (tags.operator) name += ` (${tags.operator})`;
-                    
                     const icon = L.divIcon({ className: 'p-marker', html: 'P' });
+                    
                     L.marker(coords, { icon: icon }).addTo(parkingLayer)
                      .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Naturparkplatz'}`);
                 });
             } catch (e) {
-                console.error("Fehler:", e);
+                console.error("Daten-Fehler:", e);
             } finally {
                 loader.style.display = 'none';
             }
         }
 
-        init();
+        // Karte starten, sobald das Fenster geladen ist
+        window.onload = init;
     </script>
 </body>
 </html>
