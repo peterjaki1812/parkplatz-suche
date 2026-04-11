@@ -3,40 +3,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WanderPark - Echte Flächen</title>
+    <title>ParkFinder Pro - Stadia Edition</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
-        #map { height: 100vh; width: 100vw; background: #f0f0f0; }
+        html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
+        #map { height: 100vh; width: 100vw; background: #e0e0e0; }
         
         .search-box {
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
             z-index: 2000; display: flex; gap: 8px; background: white;
-            padding: 10px; border-radius: 8px; box-shadow: 0 2px 15px rgba(0,0,0,0.2);
-            width: 85%; max-width: 400px;
+            padding: 10px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            width: 90%; max-width: 450px;
         }
         
-        input { flex: 1; border: 1px solid #ddd; padding: 8px 12px; border-radius: 4px; outline: none; font-size: 16px; }
-        button { background: #0052cc; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        input { flex: 1; border: 1px solid #eee; padding: 12px; border-radius: 8px; outline: none; font-size: 16px; }
+        button { background: #0052cc; color: white; border: none; padding: 0 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
         
         #loader {
-            position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
-            z-index: 2000; background: #0052cc; color: white; padding: 8px 20px;
-            border-radius: 20px; display: none; font-family: sans-serif; font-size: 13px; font-weight: bold;
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            z-index: 2000; background: rgba(0, 82, 204, 0.9); color: white; padding: 10px 25px;
+            border-radius: 30px; display: none; font-size: 14px; backdrop-filter: blur(5px);
         }
 
         .p-marker {
-            background-color: #0052cc; color: white; border: 2px solid white;
-            border-radius: 4px; text-align: center; font-weight: bold;
-            font-size: 14px; line-height: 24px; width: 24px !important; height: 24px !important;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+            background-color: #0052cc; color: white; border: 2.5px solid white;
+            border-radius: 6px; text-align: center; font-weight: 800;
+            font-size: 14px; line-height: 24px; width: 26px !important; height: 26px !important;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.4);
         }
     </style>
 </head>
 <body>
 
     <div class="search-box">
-        <input type="text" id="target" placeholder="Wanderziel oder Ort...">
+        <input type="text" id="target" placeholder="Wohin möchtest du?">
         <button onclick="manualSearch()">Suche</button>
     </div>
 
@@ -50,33 +50,37 @@
         let lastQueryLocation = null;
 
         function init() {
+            // Stadia Maps - Alidade Smooth (sehr sauberer Stil)
             map = L.map('map', { zoomControl: false, tap: false }).setView([51.16, 10.45], 6);
-            L.control.zoom({ position: 'bottomright' }).addTo(map);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            
+            L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth/{z}/{x}/{y}{r}.png', {
+                maxZoom: 20,
+                attribution: '&copy; Stadia Maps, &copy; OpenStreetMap contributors'
+            }).addTo(map);
             
             parkingLayer = L.layerGroup().addTo(map);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-            map.locate({setView: true, maxZoom: 13});
-            
-            map.on('locationfound', e => {
-                updateVisuals(e.latlng);
-            });
+            map.locate({setView: true, maxZoom: 14});
+            map.on('locationfound', e => updateView(e.latlng));
 
             map.on('moveend', () => {
                 const center = map.getCenter();
-                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1500) {
+                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 2000) {
                     clearTimeout(searchTimer);
-                    searchTimer = setTimeout(() => updateVisuals(center), 800);
+                    searchTimer = setTimeout(() => updateView(center), 900);
                 }
             });
         }
 
-        function updateVisuals(ll) {
+        function updateView(ll) {
+            // Blauer Radius-Kreis (5km)
             if (radiusCircle) map.removeLayer(radiusCircle);
             radiusCircle = L.circle(ll, {
                 color: '#0052cc',
                 fillColor: '#0052cc',
-                fillOpacity: 0.1,
+                fillOpacity: 0.08,
+                weight: 2,
                 radius: 5000 
             }).addTo(map);
 
@@ -90,28 +94,25 @@
             const data = await res.json();
             if (data.length > 0) {
                 const ll = L.latLng(data[0].lat, data[0].lon);
-                map.setView(ll, 13);
-                updateVisuals(ll);
+                map.setView(ll, 14);
+                updateView(ll);
             }
         }
 
         async function fetchData(ll) {
             lastQueryLocation = ll;
-            const loader = document.getElementById('loader');
-            loader.style.display = 'block';
+            document.getElementById('loader').style.display = 'block';
 
-            // RADIKALER FILTER:
-            // 1. Nur "ways" (echte Flächen), keine Punkte am Straßenrand (nodes).
-            // 2. Muss kostenlos sein ODER explizit Wanderparkplatz heißen.
-            // 3. Schließt alles Private/Kunden/Parkhäuser aus.
+            // DER STRENGE FILTER:
+            // 1. Nur Wege/Flächen (ways), keine einzelnen Punkte (nodes) am Straßenrand.
+            // 2. Muss "fee=no" sein.
+            // 3. ODER es ist explizit als Wanderparkplatz benannt (dann auch als Node erlaubt).
             const query = `
-                [out:json][timeout:30];
+                [out:json][timeout:35];
                 (
-                  // Echte Parkplatzflächen (keine Gebühr)
                   way["amenity"="parking"]["fee"="no"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:5000,${ll.lat},${ll.lng});
-                  // Gezielte Suche nach Wanderparkplätzen (auch als Punkte im Wald erlaubt)
-                  node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking"](around:5000,${ll.lat},${ll.lng});
-                  way["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking"](around:5000,${ll.lat},${ll.lng});
+                  node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Nature"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Nature"](around:5000,${ll.lat},${ll.lng});
                 );
                 out center;`;
 
@@ -125,15 +126,15 @@
                     const tags = el.tags;
                     
                     const icon = L.divIcon({ className: 'p-marker', html: 'P' });
-                    const name = tags.name || "Kostenlose Fläche";
+                    const name = tags.name || "Kostenlose Parkfläche";
                     
                     L.marker(coords, { icon: icon }).addTo(parkingLayer)
-                     .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Naturparkplatz'}`);
+                     .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Geprüfter Platz'}`);
                 });
             } catch (e) {
-                console.error("Fehler", e);
+                console.error("Daten-Timeout", e);
             } finally {
-                loader.style.display = 'none';
+                document.getElementById('loader').style.display = 'none';
             }
         }
 
