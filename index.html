@@ -3,112 +3,101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Parkplatz & Gastro - Final</title>
+    <title>Parkplatz-Fokus (Stabil)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <style>
         body { margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; }
-        #map { height: 100vh; width: 100vw; z-index: 1; }
-        .ui-top {
+        #map { height: 100vh; width: 100vw; }
+        .ui-fixed {
             position: absolute; top: 10px; left: 10px; right: 10px; z-index: 1000;
             display: flex; flex-direction: column; align-items: center; gap: 8px;
         }
-        .search-bar {
-            display: flex; width: 95%; max-width: 450px; background: white; 
-            padding: 4px; border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        .search-area {
+            display: flex; width: 90%; max-width: 400px; background: white; 
+            padding: 5px; border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
         }
-        input { border: none; padding: 10px 15px; flex-grow: 1; border-radius: 20px; outline: none; font-size: 16px; }
-        button { background: #003399; color: white; border: none; padding: 10px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; }
+        input { border: none; padding: 10px; flex-grow: 1; border-radius: 20px; outline: none; }
+        button { background: #003399; color: white; border: none; padding: 10px 15px; border-radius: 20px; font-weight: bold; }
         #status {
-            background: rgba(255,255,255,0.9); padding: 5px 15px; border-radius: 15px;
-            font-size: 12px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            background: white; padding: 4px 15px; border-radius: 15px;
+            font-size: 11px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
     </style>
 </head>
 <body>
 
-<div class="ui-top">
-    <div class="search-bar">
-        <input type="text" id="cityInput" placeholder="Ort eingeben (z.B. Cochem)">
-        <button onclick="searchCity()">Suchen</button>
+<div class="ui-fixed">
+    <div class="search-area">
+        <input type="text" id="cityInput" placeholder="Ort (z.B. Cochem)">
+        <button onclick="searchLoc()">Suchen</button>
     </div>
-    <div id="status">Warte auf Standort...</div>
+    <div id="status">Bereit</div>
 </div>
 
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    // Karte initialisieren
-    const map = L.map('map', { zoomControl: false }).setView([51.333, 6.562], 14);
-    const statusBox = document.getElementById('status');
-    let markerLayer = L.layerGroup().addTo(map);
+    const map = L.map('map', { zoomControl: false }).setView([51.32, 6.56], 15);
+    const status = document.getElementById('status');
+    const markerGroup = L.layerGroup().addTo(map);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap'
-    }).addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    // Icons definieren
-    const iconP = L.divIcon({ html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 26px;"></i>', className: 'p-icon', iconAnchor: [13, 13] });
-    const iconG = L.divIcon({ html: '<i class="fa-solid fa-utensils" style="color: #2ecc71; font-size: 22px;"></i>', className: 'g-icon', iconAnchor: [11, 11] });
+    const iconP = L.divIcon({ 
+        html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 30px; text-shadow: 2px 2px 2px white;"></i>', 
+        className: 'p-marker', iconAnchor: [15, 15] 
+    });
 
-    // Suche nach Städten
-    async function searchCity() {
+    async function searchLoc() {
         const val = document.getElementById('cityInput').value;
         if(!val) return;
-        statusBox.innerHTML = "Suche Ort...";
-        try {
-            const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}`);
-            const d = await r.json();
-            if(d.length > 0) map.setView([d[0].lat, d[0].lon], 15);
-            else statusBox.innerHTML = "Ort nicht gefunden";
-        } catch(e) { statusBox.innerHTML = "Fehler bei Ortssuche"; }
+        const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}`);
+        const d = await r.json();
+        if(d.length > 0) map.setView([d[0].lat, d[0].lon], 15);
     }
 
-    // Automatisches Laden beim Verschieben
-    map.on('moveend', () => loadMarkers());
+    let isWaiting = false;
+    map.on('moveend', () => { if(!isWaiting) loadParkings(); });
     map.locate({setView: true, maxZoom: 15});
-    map.on('locationfound', () => loadMarkers());
+    map.on('locationfound', () => loadParkings());
 
-    async function loadMarkers() {
+    async function loadParkings() {
         const c = map.getCenter();
-        statusBox.innerHTML = "Lade Umgebung...";
-        
-        // Overpass-Abfrage: Holt Punkte UND Flächenzentren (out center)
-        const query = `[out:json][timeout:25];(
-            node["amenity"="parking"](around:1200,${c.lat},${c.lng});
-            way["amenity"="parking"](around:1200,${c.lat},${c.lng});
-            node["amenity"~"restaurant|ice_cream"](around:1200,${c.lat},${c.lng});
-        );out center;`;
+        status.innerHTML = "Suche Parkplätze...";
+        status.style.color = "blue";
+
+        // EXTREM kleine Abfrage: Nur Parkplätze im 1km Radius
+        const query = `[out:json][timeout:15];(way["amenity"="parking"](around:1000,${c.lat},${c.lng});node["amenity"="parking"](around:1000,${c.lat},${c.lng}););out center;`;
 
         try {
             const res = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query));
-            const data = await res.json();
+            if(res.status === 429) throw new Error("Server-Pause");
             
-            markerLayer.clearLayers();
-            let p = 0; let g = 0;
-
+            const data = await res.json();
+            markerGroup.clearLayers();
+            
+            let count = 0;
             data.elements.forEach(el => {
                 const pos = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lng];
-                const type = el.tags.amenity;
-                const name = el.tags.name || (type === 'parking' ? "Parkplatz" : "Gastronomie");
-                
-                if(type === 'parking') p++; else g++;
-
-                L.marker(pos, {icon: type === 'parking' ? iconP : iconG})
-                 .addTo(markerLayer)
-                 .bindPopup(`<b>${name}</b><br>${type === 'parking' ? 'Öffentliches Parken' : 'Lokal'}`);
+                L.marker(pos, {icon: iconP}).addTo(markerGroup).bindPopup("Parkplatz");
+                count++;
             });
 
-            statusBox.innerHTML = `Gefunden: ${p} Parkplätze & ${g} Gastro`;
+            status.innerHTML = `Gefunden: ${count} Parkplätze`;
+            status.style.color = "green";
         } catch(e) {
-            statusBox.innerHTML = "Server-Pause... bitte 10s warten";
+            isWaiting = true;
+            status.innerHTML = "Server-Pause (Bitte 5 Sek. warten)";
+            status.style.color = "red";
+            setTimeout(() => { isWaiting = false; status.innerHTML = "Bereit"; }, 5000);
         }
     }
 </script>
 
-<div id="impressum" style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc;">
-    Impressum: Peter Jaki | Kontakt: peterjaki@example.com | 2026 Final Version
+<div style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc;">
+    Impressum: Peter Jaki | 2026 Fokus-Version
 </div>
 
 </body>
