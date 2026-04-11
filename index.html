@@ -54,4 +54,81 @@
             map = L.map('map', { zoomControl: false }).setView([51.16, 10.45], 6);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-            L.tileLayer('https://
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            parkingLayer = L.layerGroup().addTo(map);
+
+            map.locate({setView: true, maxZoom: 13});
+            map.on('locationfound', e => fetchData(e.latlng));
+
+            map.on('moveend', () => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => fetchData(map.getCenter()), 1000);
+            });
+        }
+
+        async function manualSearch() {
+            const val = document.getElementById('target').value;
+            if (!val) return;
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}`);
+            const data = await res.json();
+            if (data.length > 0) {
+                const ll = L.latLng(data[0].lat, data[0].lon);
+                map.setView(ll, 13);
+                fetchData(ll);
+            }
+        }
+
+        async function fetchData(ll) {
+            if (lastPos && map.distance(lastPos, ll) < 1000) return;
+            lastPos = ll;
+
+            const loader = document.getElementById('loader');
+            loader.style.display = 'block';
+
+            // SPEZIAL-QUERY FÜR WANDERPARKPLÄTZE:
+            // Sucht nach Punkten (nodes) und Flächen (ways), die explizit 
+            // Wander-Bezug haben oder im Wald als Parkplatz markiert sind.
+            const query = `
+                [out:json][timeout:30];
+                (
+                  // 1. Alle Parkplätze im 5km Radius, die nicht kostenpflichtig sind
+                  node["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
+                  
+                  // 2. Gezielte Suche nach Wander-Tags
+                  node["parking"~"hiking|nature"](around:5000,${ll.lat},${ll.lng});
+                  way["parking"~"hiking|nature"](around:5000,${ll.lat},${ll.lng});
+                );
+                out center;`;
+
+            try {
+                const r = await fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query));
+                const d = await r.json();
+                
+                parkingLayer.clearLayers();
+                d.elements.forEach(el => {
+                    const coords = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
+                    const tags = el.tags;
+                    
+                    // Filter: Wir ignorieren Parkplätze, die "street_side" (Straßenrand) sind, 
+                    // um echte Parkflächen im Wald zu bevorzugen.
+                    if(tags.parking === 'street_side') return;
+
+                    let name = tags.name || "Wanderparkplatz";
+                    if (tags.operator) name += ` (${tags.operator})`;
+                    
+                    const icon = L.divIcon({ className: 'p-marker', html: 'P' });
+                    L.marker(coords, { icon: icon }).addTo(parkingLayer)
+                     .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Naturparkplatz'}`);
+                });
+            } catch (e) {
+                console.error("Fehler:", e);
+            } finally {
+                loader.style.display = 'none';
+            }
+        }
+
+        init();
+    </script>
+</body>
+</html>
