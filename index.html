@@ -3,96 +3,112 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>DIAGNOSE - Parkplatz Finder</title>
+    <title>Parkplatz & Gastro - Final</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; }
-        #map { height: 100vh; width: 100vw; }
-        .debug-panel {
+        body { margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; }
+        #map { height: 100vh; width: 100vw; z-index: 1; }
+        .ui-top {
             position: absolute; top: 10px; left: 10px; right: 10px; z-index: 1000;
-            background: white; padding: 10px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.3);
-            display: flex; flex-direction: column; gap: 5px;
+            display: flex; flex-direction: column; align-items: center; gap: 8px;
         }
-        .search-row { display: flex; gap: 5px; }
-        input { flex-grow: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
-        button { padding: 8px 15px; background: #003399; color: white; border: none; border-radius: 4px; cursor: pointer; }
-        #log { font-size: 12px; font-weight: bold; color: #d35400; text-align: center; }
+        .search-bar {
+            display: flex; width: 95%; max-width: 450px; background: white; 
+            padding: 4px; border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+        input { border: none; padding: 10px 15px; flex-grow: 1; border-radius: 20px; outline: none; font-size: 16px; }
+        button { background: #003399; color: white; border: none; padding: 10px 20px; border-radius: 20px; font-weight: bold; cursor: pointer; }
+        #status {
+            background: rgba(255,255,255,0.9); padding: 5px 15px; border-radius: 15px;
+            font-size: 12px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
     </style>
 </head>
 <body>
 
-<div class="debug-panel">
-    <div class="search-row">
-        <input type="text" id="city" placeholder="Ort eingeben (z.B. Cochem)">
-        <button onclick="search()">Suchen</button>
+<div class="ui-top">
+    <div class="search-bar">
+        <input type="text" id="cityInput" placeholder="Ort eingeben (z.B. Cochem)">
+        <button onclick="searchCity()">Suchen</button>
     </div>
-    <div id="log">Warte auf Standort...</div>
+    <div id="status">Warte auf Standort...</div>
 </div>
 
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const map = L.map('map').setView([51.333, 6.562], 14);
-    const logBox = document.getElementById('log');
-    let markers = L.layerGroup().addTo(map);
+    // Karte initialisieren
+    const map = L.map('map', { zoomControl: false }).setView([51.333, 6.562], 14);
+    const statusBox = document.getElementById('status');
+    let markerLayer = L.layerGroup().addTo(map);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
 
-    async function search() {
-        const val = document.getElementById('city').value;
+    // Icons definieren
+    const iconP = L.divIcon({ html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 26px;"></i>', className: 'p-icon', iconAnchor: [13, 13] });
+    const iconG = L.divIcon({ html: '<i class="fa-solid fa-utensils" style="color: #2ecc71; font-size: 22px;"></i>', className: 'g-icon', iconAnchor: [11, 11] });
+
+    // Suche nach Städten
+    async function searchCity() {
+        const val = document.getElementById('cityInput').value;
         if(!val) return;
-        logBox.innerHTML = "Suche Ort...";
-        const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}`);
-        const d = await r.json();
-        if(d.length > 0) map.setView([d[0].lat, d[0].lon], 15);
+        statusBox.innerHTML = "Suche Ort...";
+        try {
+            const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}`);
+            const d = await r.json();
+            if(d.length > 0) map.setView([d[0].lat, d[0].lon], 15);
+            else statusBox.innerHTML = "Ort nicht gefunden";
+        } catch(e) { statusBox.innerHTML = "Fehler bei Ortssuche"; }
     }
 
-    map.on('moveend', () => runDiagnose());
+    // Automatisches Laden beim Verschieben
+    map.on('moveend', () => loadMarkers());
     map.locate({setView: true, maxZoom: 15});
-    map.on('locationfound', () => runDiagnose());
+    map.on('locationfound', () => loadMarkers());
 
-    async function runDiagnose() {
+    async function loadMarkers() {
         const c = map.getCenter();
-        logBox.innerHTML = "Datenbank wird abgefragt...";
+        statusBox.innerHTML = "Lade Umgebung...";
         
-        // Super-breite Suche nach ALLEM was Parken heißt
+        // Overpass-Abfrage: Holt Punkte UND Flächenzentren (out center)
         const query = `[out:json][timeout:25];(
-            node["amenity"="parking"](around:1500,${c.lat},${c.lng});
-            way["amenity"="parking"](around:1500,${c.lat},${c.lng});
-            node["amenity"~"restaurant|ice_cream"](around:1500,${c.lat},${c.lng});
+            node["amenity"="parking"](around:1200,${c.lat},${c.lng});
+            way["amenity"="parking"](around:1200,${c.lat},${c.lng});
+            node["amenity"~"restaurant|ice_cream"](around:1200,${c.lat},${c.lng});
         );out center;`;
 
         try {
             const res = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query));
             const data = await res.json();
             
-            markers.clearLayers();
-            let pCount = 0;
-            let gCount = 0;
+            markerLayer.clearLayers();
+            let p = 0; let g = 0;
 
             data.elements.forEach(el => {
                 const pos = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lng];
                 const type = el.tags.amenity;
-                const name = el.tags.name || (type === 'parking' ? "Parkplatz" : "Lokal");
+                const name = el.tags.name || (type === 'parking' ? "Parkplatz" : "Gastronomie");
+                
+                if(type === 'parking') p++; else g++;
 
-                if(type === 'parking') pCount++; else gCount++;
-
-                // Standard-Marker verwenden
-                L.marker(pos).addTo(markers).bindPopup(`<b>${name}</b><br>Typ: ${type}`);
+                L.marker(pos, {icon: type === 'parking' ? iconP : iconG})
+                 .addTo(markerLayer)
+                 .bindPopup(`<b>${name}</b><br>${type === 'parking' ? 'Öffentliches Parken' : 'Lokal'}`);
             });
 
-            logBox.innerHTML = `GEFUNDEN: ${pCount} Parkplätze & ${gCount} Gastros`;
-            logBox.style.color = "green";
-        } catch(e) { 
-            logBox.innerHTML = "FEHLER: Server antwortet nicht (Pause machen)";
-            logBox.style.color = "red";
+            statusBox.innerHTML = `Gefunden: ${p} Parkplätze & ${g} Gastro`;
+        } catch(e) {
+            statusBox.innerHTML = "Server-Pause... bitte 10s warten";
         }
     }
 </script>
 
-<div style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc;">
-    Impressum: Peter Jaki | DIAGNOSE-MODUS
+<div id="impressum" style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc;">
+    Impressum: Peter Jaki | Kontakt: peterjaki@example.com | 2026 Final Version
 </div>
 
 </body>
