@@ -3,104 +3,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>FreePark - Kostenlose Parkplätze</title>
+    <title>ParkFinder - Wanderparkplätze & Co.</title>
     
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+        body, html { margin: 0; padding: 0; height: 100%; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         #map { height: 100vh; width: 100vw; }
         
         .search-container {
             position: absolute;
-            top: 10px;
+            top: 15px;
             left: 50%;
             transform: translateX(-50%);
             z-index: 1000;
             display: flex;
-            gap: 5px;
+            gap: 8px;
             background: white;
-            padding: 10px;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            width: 90%;
-            max-width: 400px;
+            padding: 12px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.25);
+            width: 85%;
+            max-width: 450px;
         }
         
-        input { flex-grow: 1; border: 1px solid #ccc; padding: 8px; border-radius: 4px; }
-        button { background: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
-        button:hover { background: #0056b3; }
+        input { flex-grow: 1; border: 1px solid #ccc; padding: 10px; border-radius: 6px; outline: none; }
+        button { background: #0052cc; color: white; border: none; padding: 10px 18px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button:hover { background: #003d99; }
         
         .loading-shimmer {
             position: absolute;
-            bottom: 20px;
+            bottom: 30px;
             left: 50%;
             transform: translateX(-50%);
             z-index: 1000;
-            background: rgba(255,255,255,0.9);
-            padding: 5px 15px;
-            border-radius: 20px;
+            background: rgba(0, 82, 204, 0.9);
+            color: white;
+            padding: 8px 20px;
+            border-radius: 25px;
             display: none;
             font-size: 14px;
+            font-weight: bold;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+        }
+
+        /* Parkplatz-Icon Style */
+        .p-icon {
+            background-color: #0052cc;
+            color: white;
+            border: 2px solid white;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
+            font-size: 14px;
+            line-height: 22px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.4);
         }
     </style>
 </head>
 <body>
 
     <div class="search-container">
-        <input type="text" id="cityInput" placeholder="Ort suchen (z.B. Berlin)...">
-        <button onclick="searchLocation()">Suchen</button>
+        <input type="text" id="cityInput" placeholder="Ort oder Adresse suchen...">
+        <button onclick="searchLocation()">Suche</button>
     </div>
 
-    <div id="status" class="loading-shimmer">Suche Parkplätze...</div>
+    <div id="status" class="loading-shimmer">Suche große Gratis-Parkplätze...</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
         let map, userMarker, radiusCircle, parkingLayer;
-        
-        // Initialisierung der Karte
+        let lastPos = null;
+
         function initMap() {
-            map = L.map('map').setView([51.1657, 10.4515], 6); // Deutschland Zentrum als Fallback
+            // Karte initialisieren
+            map = L.map('map', { zoomControl: false }).setView([51.1657, 10.4515], 6);
+            L.control.zoom({ position: 'bottomright' }).addTo(map);
 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap contributors'
+                attribution: '© OpenStreetMap'
             }).addTo(map);
 
             parkingLayer = L.layerGroup().addTo(map);
 
-            // Start am eigenen Standort
-            map.locate({setView: true, maxZoom: 14});
+            // 1. Start am eigenen Standort
+            map.locate({setView: true, maxZoom: 15});
 
             map.on('locationfound', function(e) {
-                updateLocation(e.latlng);
+                updatePosition(e.latlng, true);
             });
 
-            map.on('locationerror', function() {
-                alert("Standort konnte nicht ermittelt werden. Bitte nutzen Sie die Suche.");
+            // 2. Suche beim Verschieben der Karte
+            map.on('moveend', function() {
+                const center = map.getCenter();
+                // Nur neu laden, wenn wir uns mehr als 200m bewegt haben (Performance)
+                if (!lastPos || map.distance(lastPos, center) > 200) {
+                    fetchParkingData(center);
+                }
             });
         }
 
-        // Standort-Update (GPS oder Suche)
-        function updateLocation(latlng) {
-            if (userMarker) map.removeLayer(userMarker);
-            if (radiusCircle) map.removeLayer(radiusCircle);
-
-            userMarker = L.marker(latlng).addTo(map).bindPopup("Ihr Standort").openPopup();
+        function updatePosition(latlng, setRadius = false) {
+            lastPos = latlng;
             
-            // 1km Blauer Radius
-            radiusCircle = L.circle(latlng, {
-                color: '#007bff',
-                fillColor: '#007bff',
-                fillOpacity: 0.1,
-                radius: 1000
-            }).addTo(map);
+            if (userMarker) map.removeLayer(userMarker);
+            userMarker = L.marker(latlng).addTo(map).bindPopup("Ihr Suchpunkt");
 
-            map.panTo(latlng);
+            if (setRadius) {
+                if (radiusCircle) map.removeLayer(radiusCircle);
+                radiusCircle = L.circle(latlng, {
+                    color: '#0052cc',
+                    fillColor: '#0052cc',
+                    fillOpacity: 0.1,
+                    radius: 1000 // 1km Radius
+                }).addTo(map);
+            }
+
             fetchParkingData(latlng);
         }
 
-        // Ortssuche via Nominatim API
         async function searchLocation() {
             const query = document.getElementById('cityInput').value;
             if (!query) return;
@@ -109,31 +131,28 @@
                 const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
                 const data = await response.json();
                 if (data.length > 0) {
-                    const latlng = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
-                    updateLocation(latlng);
-                } else {
-                    alert("Ort nicht gefunden.");
+                    const latlng = L.latLng(data[0].lat, data[0].lon);
+                    map.setView(latlng, 15);
+                    updatePosition(latlng, true);
                 }
-            } catch (err) {
-                console.error("Fehler bei der Suche:", err);
-            }
+            } catch (err) { console.error(err); }
         }
 
-        // Overpass API Abfrage für kostenlose Parkplätze
         async function fetchParkingData(latlng) {
-            document.getElementById('status').style.display = 'block';
-            parkingLayer.clearLayers();
+            const statusEl = document.getElementById('status');
+            statusEl.style.display = 'block';
+            lastPos = latlng;
 
-            const radius = 1500; // Suche etwas weiter als der 1km Kreis zur Sicherheit
-            
-            // Filter-Logik:
-            // amenity=parking + fee=no (kostenlos)
-            // Ausschluss von Kundenparkplätzen und Straßenrand-Parken
+            // Der Overpass-Filter:
+            // - amenity=parking & fee=no
+            // - parking=surface (Nur Bodenflächen, keine Buchten am Rand)
+            // - Ausschluss von Kunden/Privat (access)
+            // - Ausschluss von Buchten (parking=lane / street_side)
             const query = `
                 [out:json][timeout:25];
                 (
-                  node["amenity"="parking"]["fee"="no"]["access"!~"customers|private"]["parking"!~"lane|street_side"](around:${radius},${latlng.lat},${latlng.lng});
-                  way["amenity"="parking"]["fee"="no"]["access"!~"customers|private"]["parking"!~"lane|street_side"](around:${radius},${latlng.lat},${latlng.lng});
+                  node["amenity"="parking"]["fee"="no"]["parking"="surface"]["access"!~"customers|private"]["parking"!~"lane|street_side"](around:2000,${latlng.lat},${latlng.lng});
+                  way["amenity"="parking"]["fee"="no"]["parking"="surface"]["access"!~"customers|private"]["parking"!~"lane|street_side"](around:2000,${latlng.lat},${latlng.lng});
                 );
                 out center;`;
 
@@ -143,23 +162,29 @@
                 const response = await fetch(url);
                 const data = await response.json();
                 
+                // Wir löschen die alten Marker nicht sofort, um Flackern zu vermeiden, 
+                // aber hier für die Übersichtlichkeit der neuen Suche:
+                parkingLayer.clearLayers();
+
                 data.elements.forEach(el => {
                     const pos = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
                     const name = el.tags.name || "Kostenloser Parkplatz";
-                    
-                    L.marker(pos, {
-                        icon: L.divIcon({
-                            className: 'custom-div-icon',
-                            html: "<div style='background-color:#28a745; color:white; padding:5px; border-radius:50%; width:20px; height:20px; text-align:center; font-weight:bold; border:2px solid white;'>P</div>",
-                            iconSize: [30, 30]
-                        })
-                    }).addTo(parkingLayer)
-                    .bindPopup(`<b>${name}</b><br>Kostenlos (OSM Filter aktiv)`);
+                    const surface = el.tags.surface ? `<br>Untergrund: ${el.tags.surface}` : "";
+
+                    const pIcon = L.divIcon({
+                        className: 'p-icon',
+                        html: 'P',
+                        iconSize: [26, 26]
+                    });
+
+                    L.marker(pos, { icon: pIcon })
+                        .addTo(parkingLayer)
+                        .bindPopup(`<b>${name}</b><br>Kostenlose Parkfläche${surface}`);
                 });
             } catch (err) {
                 console.error("Overpass Fehler:", err);
             } finally {
-                document.getElementById('status').style.display = 'none';
+                statusEl.style.display = 'none';
             }
         }
 
