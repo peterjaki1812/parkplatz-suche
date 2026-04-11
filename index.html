@@ -1,207 +1,169 @@
-// Konfiguration
-const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
-const PARK_MIN_CAPACITY = 24;
-const DEFAULT_PARK_RADIUS = 2000;
-const DEFAULT_REST_RADIUS = 1000;
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FreePark - Kostenlose Parkplätze</title>
+    
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; font-family: sans-serif; }
+        #map { height: 100vh; width: 100vw; }
+        
+        .search-container {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            gap: 5px;
+            background: white;
+            padding: 10px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            width: 90%;
+            max-width: 400px;
+        }
+        
+        input { flex-grow: 1; border: 1px solid #ccc; padding: 8px; border-radius: 4px; }
+        button { background: #007bff; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        
+        .loading-shimmer {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(255,255,255,0.9);
+            padding: 5px 15px;
+            border-radius: 20px;
+            display: none;
+            font-size: 14px;
+        }
+    </style>
+</head>
+<body>
 
-// Karte initialisieren
-const map = L.map('map', { zoomControl: true }).setView([51.3388, 6.5853], 14);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; OpenStreetMap contributors'
-}).addTo(map);
+    <div class="search-container">
+        <input type="text" id="cityInput" placeholder="Ort suchen (z.B. Berlin)...">
+        <button onclick="searchLocation()">Suchen</button>
+    </div>
 
-const parkLayer = L.layerGroup().addTo(map);
-const restLayer = L.layerGroup().addTo(map);
+    <div id="status" class="loading-shimmer">Suche Parkplätze...</div>
+    <div id="map"></div>
 
-const statusEl = document.getElementById('status');
-const locateBtn = document.getElementById('locateBtn');
-const parkRadiusInput = document.getElementById('parkRadius');
-const restRadiusInput = document.getElementById('restRadius');
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
-let currentPos = null;
+    <script>
+        let map, userMarker, radiusCircle, parkingLayer;
+        
+        // Initialisierung der Karte
+        function initMap() {
+            map = L.map('map').setView([51.1657, 10.4515], 6); // Deutschland Zentrum als Fallback
 
-// Hilfsfunktionen
-function setStatus(txt) { statusEl.textContent = txt; }
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '© OpenStreetMap contributors'
+            }).addTo(map);
 
-function createBluePIcon() {
-  const div = document.createElement('div');
-  div.className = 'blue-p';
-  div.innerHTML = 'P';
-  return L.divIcon({ html: div.outerHTML, className: 'leaflet-marker-icon blue-p', iconSize: [28,28] });
-}
+            parkingLayer = L.layerGroup().addTo(map);
 
-function fetchOverpass(query) {
-  return fetch(OVERPASS_URL, {
-    method: 'POST',
-    body: query,
-    headers: { 'Content-Type': 'text/plain' }
-  }).then(r => r.json());
-}
+            // Start am eigenen Standort
+            map.locate({setView: true, maxZoom: 14});
 
-function buildParkingQuery(lat, lon, radius) {
-  // Wir holen nodes, ways und relations mit amenity=parking oder parking=surface etc.
-  return `[out:json][timeout:25];
-(
-  node(around:${radius},${lat},${lon})[amenity=parking];
-  way(around:${radius},${lat},${lon})[amenity=parking];
-  relation(around:${radius},${lat},${lon})[amenity=parking];
-);
-out center tags;`;
-}
+            map.on('locationfound', function(e) {
+                updateLocation(e.latlng);
+            });
 
-function buildRestaurantQuery(lat, lon, radius) {
-  return `[out:json][timeout:25];
-(
-  node(around:${radius},${lat},${lon})[amenity=restaurant];
-  way(around:${radius},${lat},${lon})[amenity=restaurant];
-  relation(around:${radius},${lat},${lon})[amenity=restaurant];
-);
-out center tags;`;
-}
+            map.on('locationerror', function() {
+                alert("Standort konnte nicht ermittelt werden. Bitte nutzen Sie die Suche.");
+            });
+        }
 
-function parseCapacity(cap) {
-  if (!cap) return null;
-  const n = parseInt(cap, 10);
-  return isNaN(n) ? null : n;
-}
+        // Standort-Update (GPS oder Suche)
+        function updateLocation(latlng) {
+            if (userMarker) map.removeLayer(userMarker);
+            if (radiusCircle) map.removeLayer(radiusCircle);
 
-function isPaid(tags) {
-  if (!tags) return false;
-  if (tags.fee && tags.fee.toLowerCase() === 'yes') return true;
-  if (tags['fee:conditional'] && tags['fee:conditional'].toLowerCase().includes('yes')) return true;
-  if (tags['parking:fee'] && tags['parking:fee'].toLowerCase() === 'yes') return true;
-  return false;
-}
+            userMarker = L.marker(latlng).addTo(map).bindPopup("Ihr Standort").openPopup();
+            
+            // 1km Blauer Radius
+            radiusCircle = L.circle(latlng, {
+                color: '#007bff',
+                fillColor: '#007bff',
+                fillOpacity: 0.1,
+                radius: 1000
+            }).addTo(map);
 
-function showParkings(osmJson) {
-  parkLayer.clearLayers();
-  const icon = createBluePIcon();
-  let count = 0;
-  osmJson.elements.forEach(el => {
-    const tags = el.tags || {};
-    if (isPaid(tags)) return;
-    const cap = parseCapacity(tags.capacity);
-    if (cap !== null && cap < PARK_MIN_CAPACITY) return;
-    // Wenn capacity fehlt, optional: ausschließen oder anzeigen. Hier zeigen wir nur mit capacity oder großen Flächen.
-    if (cap === null) return;
-    const lat = el.lat || (el.center && el.center.lat);
-    const lon = el.lon || (el.center && el.center.lon);
-    if (!lat || !lon) return;
-    const marker = L.marker([lat, lon], { icon });
-    const name = tags.name || 'Parkplatz';
-    marker.bindPopup(`<b>${name}</b><br>Kapazität: ${cap}<br>${tags.fee ? 'Gebührenpflichtig' : 'Kostenlos'}`);
-    marker.addTo(parkLayer);
-    count++;
-  });
-  setStatus(`Gefundene Parkplätze (≥ ${PARK_MIN_CAPACITY}): ${count}`);
-}
+            map.panTo(latlng);
+            fetchParkingData(latlng);
+        }
 
-function showRestaurants(osmJson) {
-  restLayer.clearLayers();
-  let count = 0;
-  osmJson.elements.forEach(el => {
-    const tags = el.tags || {};
-    const lat = el.lat || (el.center && el.center.lat);
-    const lon = el.lon || (el.center && el.center.lon);
-    if (!lat || !lon) return;
-    const oh = tags.opening_hours;
-    let openSatAt15 = false;
-    if (oh) {
-      try {
-        const ohObj = new opening_hours(oh);
-        // Prüfen ob am nächsten Samstag um 15:00 geöffnet ist
-        const now = new Date();
-        // Finde nächsten Samstag
-        const saturday = new Date(now);
-        saturday.setDate(now.getDate() + ((6 - now.getDay() + 7) % 7));
-        saturday.setHours(15,0,0,0);
-        openSatAt15 = ohObj.getState(saturday);
-        // Wenn opening_hours nicht eindeutig ist, ohObj.getNextChange kann helfen
-      } catch (e) {
-        // falls parsing fehlschlägt, überspringen
-        return;
-      }
-    } else {
-      // Ohne opening_hours nicht anzeigen
-      return;
-    }
-    if (!openSatAt15) return;
-    // Ausschluss: Lokale die erst ab 17:00 öffnen
-    // Wir prüfen, ob das erste Öffnen am Samstag später als 15:00 ist.
-    try {
-      const ohObj = new opening_hours(tags.opening_hours);
-      const saturday = new Date();
-      saturday.setDate(new Date().getDate() + ((6 - new Date().getDay() + 7) % 7));
-      saturday.setHours(0,0,0,0);
-      const intervals = ohObj.getOpenIntervals(saturday, new Date(saturday.getTime() + 24*3600*1000));
-      if (!intervals || intervals.length === 0) return;
-      const firstOpen = new Date(intervals[0][0]);
-      if (firstOpen.getHours() >= 17) return;
-    } catch (e) {
-      return;
-    }
+        // Ortssuche via Nominatim API
+        async function searchLocation() {
+            const query = document.getElementById('cityInput').value;
+            if (!query) return;
 
-    const marker = L.marker([lat, lon]);
-    const name = tags.name || 'Restaurant';
-    marker.bindPopup(`<b>${name}</b><br>Öffnungszeiten: ${tags.opening_hours}`);
-    marker.addTo(restLayer);
-    count++;
-  });
-  setStatus(prev => prev + ` | Restaurants offen Sa ab 15:00: ${count}`);
-}
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+                const data = await response.json();
+                if (data.length > 0) {
+                    const latlng = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+                    updateLocation(latlng);
+                } else {
+                    alert("Ort nicht gefunden.");
+                }
+            } catch (err) {
+                console.error("Fehler bei der Suche:", err);
+            }
+        }
 
-function queryAndShow() {
-  if (!currentPos) return;
-  const lat = currentPos.coords.latitude;
-  const lon = currentPos.coords.longitude;
-  const parkRadius = parseInt(parkRadiusInput.value, 10) || DEFAULT_PARK_RADIUS;
-  const restRadius = parseInt(restRadiusInput.value, 10) || DEFAULT_REST_RADIUS;
+        // Overpass API Abfrage für kostenlose Parkplätze
+        async function fetchParkingData(latlng) {
+            document.getElementById('status').style.display = 'block';
+            parkingLayer.clearLayers();
 
-  setStatus('Suche Parkplätze...');
-  const parkQ = buildParkingQuery(lat, lon, parkRadius);
-  fetchOverpass(parkQ).then(json => {
-    showParkings(json);
-  }).catch(err => setStatus('Fehler bei Parkabfrage'));
+            const radius = 1500; // Suche etwas weiter als der 1km Kreis zur Sicherheit
+            
+            // Filter-Logik:
+            // amenity=parking + fee=no (kostenlos)
+            // Ausschluss von Kundenparkplätzen und Straßenrand-Parken
+            const query = `
+                [out:json][timeout:25];
+                (
+                  node["amenity"="parking"]["fee"="no"]["access"!~"customers|private"]["parking"!~"lane|street_side"](around:${radius},${latlng.lat},${latlng.lng});
+                  way["amenity"="parking"]["fee"="no"]["access"!~"customers|private"]["parking"!~"lane|street_side"](around:${radius},${latlng.lat},${latlng.lng});
+                );
+                out center;`;
 
-  setStatus('Suche Restaurants...');
-  const restQ = buildRestaurantQuery(lat, lon, restRadius);
-  fetchOverpass(restQ).then(json => {
-    showRestaurants(json);
-  }).catch(err => setStatus('Fehler bei Restaurantabfrage'));
-}
+            const url = "https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query);
 
-// Standortfunktionen
-function onLocationFound(e) {
-  currentPos = e;
-  const lat = e.coords.latitude;
-  const lon = e.coords.longitude;
-  map.setView([lat, lon], 16);
-  L.circle([lat, lon], { radius: Math.max(e.coords.accuracy, 10), color:'#3388ff', fill:false }).addTo(map);
-  queryAndShow();
-}
+            try {
+                const response = await fetch(url);
+                const data = await response.json();
+                
+                data.elements.forEach(el => {
+                    const pos = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
+                    const name = el.tags.name || "Kostenloser Parkplatz";
+                    
+                    L.marker(pos, {
+                        icon: L.divIcon({
+                            className: 'custom-div-icon',
+                            html: "<div style='background-color:#28a745; color:white; padding:5px; border-radius:50%; width:20px; height:20px; text-align:center; font-weight:bold; border:2px solid white;'>P</div>",
+                            iconSize: [30, 30]
+                        })
+                    }).addTo(parkingLayer)
+                    .bindPopup(`<b>${name}</b><br>Kostenlos (OSM Filter aktiv)`);
+                });
+            } catch (err) {
+                console.error("Overpass Fehler:", err);
+            } finally {
+                document.getElementById('status').style.display = 'none';
+            }
+        }
 
-function onLocationError(err) {
-  setStatus('Standort nicht verfügbar: ' + err.message);
-}
-
-// Initiale Standortanfrage
-locateBtn.addEventListener('click', () => {
-  setStatus('Standort wird ermittelt...');
-  navigator.geolocation.getCurrentPosition(pos => {
-    onLocationFound({ coords: pos.coords });
-  }, onLocationError, { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 });
-});
-
-// Auto zentrieren beim Laden
-if (navigator.geolocation) {
-  setStatus('Standort wird ermittelt...');
-  navigator.geolocation.getCurrentPosition(pos => {
-    onLocationFound({ coords: pos.coords });
-  }, onLocationError, { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 });
-} else {
-  setStatus('Geolocation nicht unterstützt');
-}
-
-// Neu laden bei Radiusänderung
-parkRadiusInput.addEventListener('change', queryAndShow);
-restRadiusInput.addEventListener('change', queryAndShow);
+        initMap();
+    </script>
+</body>
+</html>
