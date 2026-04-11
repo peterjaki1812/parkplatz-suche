@@ -1,121 +1,207 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Parkplatz-Finder Ultra</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
-    <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; background: #f0f0f0; }
-        #map { height: 100vh; width: 100vw; }
-        .ui-panel {
-            position: absolute; top: 10px; left: 10px; right: 10px; z-index: 1000;
-            display: flex; flex-direction: column; align-items: center; gap: 8px;
-        }
-        .search-bar {
-            display: flex; width: 95%; max-width: 450px; background: white; 
-            padding: 5px; border-radius: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-        }
-        input { border: none; padding: 12px 20px; flex-grow: 1; border-radius: 25px; outline: none; font-size: 16px; }
-        button { background: #003399; color: white; border: none; padding: 10px 25px; border-radius: 25px; font-weight: bold; cursor: pointer; }
-        #status {
-            background: rgba(255,255,255,0.95); padding: 6px 20px; border-radius: 20px;
-            font-size: 13px; font-weight: bold; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            color: #003399; border: 1px solid #003399;
-        }
-    </style>
-</head>
-<body>
+// Konfiguration
+const OVERPASS_URL = 'https://overpass-api.de/api/interpreter';
+const PARK_MIN_CAPACITY = 24;
+const DEFAULT_PARK_RADIUS = 2000;
+const DEFAULT_REST_RADIUS = 1000;
 
-<div class="ui-panel">
-    <div class="search-bar">
-        <input type="text" id="cityInput" placeholder="Stadt eingeben (z.B. Krefeld)">
-        <button onclick="searchCity()">Suchen</button>
-    </div>
-    <div id="status">Warte auf Karte...</div>
-</div>
+// Karte initialisieren
+const map = L.map('map', { zoomControl: true }).setView([51.3388, 6.5853], 14);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
 
-<div id="map"></div>
+const parkLayer = L.layerGroup().addTo(map);
+const restLayer = L.layerGroup().addTo(map);
 
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script>
-    const map = L.map('map', { zoomControl: false }).setView([51.33, 6.56], 15);
-    const status = document.getElementById('status');
-    const markerLayer = L.layerGroup().addTo(map);
+const statusEl = document.getElementById('status');
+const locateBtn = document.getElementById('locateBtn');
+const parkRadiusInput = document.getElementById('parkRadius');
+const restRadiusInput = document.getElementById('restRadius');
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '© OpenStreetMap'
-    }).addTo(map);
+let currentPos = null;
 
-    const iconP = L.divIcon({ 
-        html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 30px; text-shadow: 0 0 3px white;"></i>', 
-        className: 'p-marker', iconAnchor: [15, 15] 
-    });
+// Hilfsfunktionen
+function setStatus(txt) { statusEl.textContent = txt; }
 
-    async function searchCity() {
-        const val = document.getElementById('cityInput').value;
-        if(!val) return;
-        status.innerHTML = "Suche Ort...";
-        try {
-            const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}`);
-            const d = await r.json();
-            if(d.length > 0) map.setView([d[0].lat, d[0].lon], 16);
-        } catch(e) { status.innerHTML = "Fehler bei Ortssuche"; }
+function createBluePIcon() {
+  const div = document.createElement('div');
+  div.className = 'blue-p';
+  div.innerHTML = 'P';
+  return L.divIcon({ html: div.outerHTML, className: 'leaflet-marker-icon blue-p', iconSize: [28,28] });
+}
+
+function fetchOverpass(query) {
+  return fetch(OVERPASS_URL, {
+    method: 'POST',
+    body: query,
+    headers: { 'Content-Type': 'text/plain' }
+  }).then(r => r.json());
+}
+
+function buildParkingQuery(lat, lon, radius) {
+  // Wir holen nodes, ways und relations mit amenity=parking oder parking=surface etc.
+  return `[out:json][timeout:25];
+(
+  node(around:${radius},${lat},${lon})[amenity=parking];
+  way(around:${radius},${lat},${lon})[amenity=parking];
+  relation(around:${radius},${lat},${lon})[amenity=parking];
+);
+out center tags;`;
+}
+
+function buildRestaurantQuery(lat, lon, radius) {
+  return `[out:json][timeout:25];
+(
+  node(around:${radius},${lat},${lon})[amenity=restaurant];
+  way(around:${radius},${lat},${lon})[amenity=restaurant];
+  relation(around:${radius},${lat},${lon})[amenity=restaurant];
+);
+out center tags;`;
+}
+
+function parseCapacity(cap) {
+  if (!cap) return null;
+  const n = parseInt(cap, 10);
+  return isNaN(n) ? null : n;
+}
+
+function isPaid(tags) {
+  if (!tags) return false;
+  if (tags.fee && tags.fee.toLowerCase() === 'yes') return true;
+  if (tags['fee:conditional'] && tags['fee:conditional'].toLowerCase().includes('yes')) return true;
+  if (tags['parking:fee'] && tags['parking:fee'].toLowerCase() === 'yes') return true;
+  return false;
+}
+
+function showParkings(osmJson) {
+  parkLayer.clearLayers();
+  const icon = createBluePIcon();
+  let count = 0;
+  osmJson.elements.forEach(el => {
+    const tags = el.tags || {};
+    if (isPaid(tags)) return;
+    const cap = parseCapacity(tags.capacity);
+    if (cap !== null && cap < PARK_MIN_CAPACITY) return;
+    // Wenn capacity fehlt, optional: ausschließen oder anzeigen. Hier zeigen wir nur mit capacity oder großen Flächen.
+    if (cap === null) return;
+    const lat = el.lat || (el.center && el.center.lat);
+    const lon = el.lon || (el.center && el.center.lon);
+    if (!lat || !lon) return;
+    const marker = L.marker([lat, lon], { icon });
+    const name = tags.name || 'Parkplatz';
+    marker.bindPopup(`<b>${name}</b><br>Kapazität: ${cap}<br>${tags.fee ? 'Gebührenpflichtig' : 'Kostenlos'}`);
+    marker.addTo(parkLayer);
+    count++;
+  });
+  setStatus(`Gefundene Parkplätze (≥ ${PARK_MIN_CAPACITY}): ${count}`);
+}
+
+function showRestaurants(osmJson) {
+  restLayer.clearLayers();
+  let count = 0;
+  osmJson.elements.forEach(el => {
+    const tags = el.tags || {};
+    const lat = el.lat || (el.center && el.center.lat);
+    const lon = el.lon || (el.center && el.center.lon);
+    if (!lat || !lon) return;
+    const oh = tags.opening_hours;
+    let openSatAt15 = false;
+    if (oh) {
+      try {
+        const ohObj = new opening_hours(oh);
+        // Prüfen ob am nächsten Samstag um 15:00 geöffnet ist
+        const now = new Date();
+        // Finde nächsten Samstag
+        const saturday = new Date(now);
+        saturday.setDate(now.getDate() + ((6 - now.getDay() + 7) % 7));
+        saturday.setHours(15,0,0,0);
+        openSatAt15 = ohObj.getState(saturday);
+        // Wenn opening_hours nicht eindeutig ist, ohObj.getNextChange kann helfen
+      } catch (e) {
+        // falls parsing fehlschlägt, überspringen
+        return;
+      }
+    } else {
+      // Ohne opening_hours nicht anzeigen
+      return;
+    }
+    if (!openSatAt15) return;
+    // Ausschluss: Lokale die erst ab 17:00 öffnen
+    // Wir prüfen, ob das erste Öffnen am Samstag später als 15:00 ist.
+    try {
+      const ohObj = new opening_hours(tags.opening_hours);
+      const saturday = new Date();
+      saturday.setDate(new Date().getDate() + ((6 - new Date().getDay() + 7) % 7));
+      saturday.setHours(0,0,0,0);
+      const intervals = ohObj.getOpenIntervals(saturday, new Date(saturday.getTime() + 24*3600*1000));
+      if (!intervals || intervals.length === 0) return;
+      const firstOpen = new Date(intervals[0][0]);
+      if (firstOpen.getHours() >= 17) return;
+    } catch (e) {
+      return;
     }
 
-    // Server-Liste für Redundanz
-    const servers = [
-        'https://overpass-api.de/api/interpreter',
-        'https://overpass.kumi.systems/api/interpreter',
-        'https://lz4.overpass-api.de/api/interpreter'
-    ];
-    let currentServerIdx = 0;
+    const marker = L.marker([lat, lon]);
+    const name = tags.name || 'Restaurant';
+    marker.bindPopup(`<b>${name}</b><br>Öffnungszeiten: ${tags.opening_hours}`);
+    marker.addTo(restLayer);
+    count++;
+  });
+  setStatus(prev => prev + ` | Restaurants offen Sa ab 15:00: ${count}`);
+}
 
-    map.on('moveend', () => loadAllParkings());
-    map.locate({setView: true, maxZoom: 16});
-    map.on('locationfound', () => loadAllParkings());
+function queryAndShow() {
+  if (!currentPos) return;
+  const lat = currentPos.coords.latitude;
+  const lon = currentPos.coords.longitude;
+  const parkRadius = parseInt(parkRadiusInput.value, 10) || DEFAULT_PARK_RADIUS;
+  const restRadius = parseInt(restRadiusInput.value, 10) || DEFAULT_REST_RADIUS;
 
-    async function loadAllParkings() {
-        const c = map.getCenter();
-        status.innerHTML = "Suche Parkplätze (800m)...";
-        
-        // Ultrascharfe Abfrage für ALLES was parken ist
-        const query = `[out:json][timeout:15];(
-            node["amenity"="parking"](around:800,${c.lat},${c.lng});
-            way["amenity"="parking"](around:800,${c.lat},${c.lng});
-            node["parking"](around:800,${c.lat},${c.lng});
-            way["parking"](around:800,${c.lat},${c.lng});
-        );out center;`;
+  setStatus('Suche Parkplätze...');
+  const parkQ = buildParkingQuery(lat, lon, parkRadius);
+  fetchOverpass(parkQ).then(json => {
+    showParkings(json);
+  }).catch(err => setStatus('Fehler bei Parkabfrage'));
 
-        try {
-            const res = await fetch(servers[currentServerIdx] + '?data=' + encodeURIComponent(query));
-            if(!res.ok) throw new Error();
-            
-            const data = await res.json();
-            markerLayer.clearLayers();
-            
-            let count = 0;
-            data.elements.forEach(el => {
-                const pos = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lng];
-                L.marker(pos, {icon: iconP}).addTo(markerLayer).bindPopup("<b>Parkplatz</b>");
-                count++;
-            });
+  setStatus('Suche Restaurants...');
+  const restQ = buildRestaurantQuery(lat, lon, restRadius);
+  fetchOverpass(restQ).then(json => {
+    showRestaurants(json);
+  }).catch(err => setStatus('Fehler bei Restaurantabfrage'));
+}
 
-            status.innerHTML = `Gefunden: ${count} Parkplätze`;
-            if(count === 0) status.innerHTML = "Keine Parkplätze im 800m Radius gefunden.";
-        } catch(e) {
-            // Bei Fehler: Nächsten Server probieren
-            currentServerIdx = (currentServerIdx + 1) % servers.length;
-            status.innerHTML = "Serverwechsel... bitte kurz warten";
-            setTimeout(loadAllParkings, 2000);
-        }
-    }
-</script>
+// Standortfunktionen
+function onLocationFound(e) {
+  currentPos = e;
+  const lat = e.coords.latitude;
+  const lon = e.coords.longitude;
+  map.setView([lat, lon], 16);
+  L.circle([lat, lon], { radius: Math.max(e.coords.accuracy, 10), color:'#3388ff', fill:false }).addTo(map);
+  queryAndShow();
+}
 
-<div style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc; font-weight: bold;">
-    Impressum: Peter Jaki | 2026 Ultra-Version
-</div>
+function onLocationError(err) {
+  setStatus('Standort nicht verfügbar: ' + err.message);
+}
 
-</body>
-</html>
+// Initiale Standortanfrage
+locateBtn.addEventListener('click', () => {
+  setStatus('Standort wird ermittelt...');
+  navigator.geolocation.getCurrentPosition(pos => {
+    onLocationFound({ coords: pos.coords });
+  }, onLocationError, { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 });
+});
+
+// Auto zentrieren beim Laden
+if (navigator.geolocation) {
+  setStatus('Standort wird ermittelt...');
+  navigator.geolocation.getCurrentPosition(pos => {
+    onLocationFound({ coords: pos.coords });
+  }, onLocationError, { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 });
+} else {
+  setStatus('Geolocation nicht unterstützt');
+}
+
+// Neu laden bei Radiusänderung
+parkRadiusInput.addEventListener('change', queryAndShow);
+restRadiusInput.addEventListener('change', queryAndShow);
