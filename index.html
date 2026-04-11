@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Parkplatz-Fokus (Stabil)</title>
+    <title>Parkplatz-Fokus (High Speed)</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <style>
@@ -53,14 +53,15 @@
     async function searchLoc() {
         const val = document.getElementById('cityInput').value;
         if(!val) return;
+        status.innerHTML = "Suche Ort...";
         const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}`);
         const d = await r.json();
-        if(d.length > 0) map.setView([d[0].lat, d[0].lon], 15);
+        if(d.length > 0) map.setView([d[0].lat, d[0].lon], 16);
     }
 
     let isWaiting = false;
     map.on('moveend', () => { if(!isWaiting) loadParkings(); });
-    map.locate({setView: true, maxZoom: 15});
+    map.locate({setView: true, maxZoom: 16});
     map.on('locationfound', () => loadParkings());
 
     async function loadParkings() {
@@ -68,12 +69,15 @@
         status.innerHTML = "Suche Parkplätze...";
         status.style.color = "blue";
 
-        // EXTREM kleine Abfrage: Nur Parkplätze im 1km Radius
-        const query = `[out:json][timeout:15];(way["amenity"="parking"](around:1000,${c.lat},${c.lng});node["amenity"="parking"](around:1000,${c.lat},${c.lng}););out center;`;
+        // EXTREM kleine Abfrage (500m) für maximale Geschwindigkeit gegen 504 Timeouts
+        const query = `[out:json][timeout:10];(way["amenity"="parking"](around:500,${c.lat},${c.lng});node["amenity"="parking"](around:500,${c.lat},${c.lng}););out center;`;
+
+        // Wir nutzen einen alternativen Server-Endpunkt, falls der Hauptserver hängt
+        const server = 'https://overpass.kumi.systems/api/interpreter'; 
 
         try {
-            const res = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query));
-            if(res.status === 429) throw new Error("Server-Pause");
+            const res = await fetch(server + '?data=' + encodeURIComponent(query));
+            if(!res.ok) throw new Error("Server-Fehler");
             
             const data = await res.json();
             markerGroup.clearLayers();
@@ -85,19 +89,19 @@
                 count++;
             });
 
-            status.innerHTML = `Gefunden: ${count} Parkplätze`;
+            status.innerHTML = `Gefunden: ${count} Parkplätze (500m)`;
             status.style.color = "green";
         } catch(e) {
-            isWaiting = true;
-            status.innerHTML = "Server-Pause (Bitte 5 Sek. warten)";
+            status.innerHTML = "Server überlastet - bitte 10s warten";
             status.style.color = "red";
-            setTimeout(() => { isWaiting = false; status.innerHTML = "Bereit"; }, 5000);
+            isWaiting = true;
+            setTimeout(() => { isWaiting = false; status.innerHTML = "Bereit"; }, 10000);
         }
     }
 </script>
 
 <div style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc;">
-    Impressum: Peter Jaki | 2026 Fokus-Version
+    Impressum: Peter Jaki | 2026 High-Speed Version
 </div>
 
 </body>
