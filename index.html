@@ -3,33 +3,34 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ParkFinder - Clean Edition</title>
+    <title>ParkFinder - Nur echte Flächen</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
-        html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
-        #map { height: 100vh; width: 100vw; background: #f4f4f4; }
+        html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
+        #map { height: 100vh; width: 100vw; background: #f0f0f0; }
         
         .search-box {
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
             z-index: 2000; display: flex; gap: 8px; background: white;
-            padding: 10px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-            width: 90%; max-width: 450px;
+            padding: 10px; border-radius: 8px; box-shadow: 0 2px 15px rgba(0,0,0,0.2);
+            width: 85%; max-width: 400px;
         }
         
-        input { flex: 1; border: 1px solid #ddd; padding: 12px; border-radius: 8px; outline: none; font-size: 16px; }
-        button { background: #0052cc; color: white; border: none; padding: 0 20px; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        input { flex: 1; border: 1px solid #ddd; padding: 8px 12px; border-radius: 4px; outline: none; }
+        button { background: #0052cc; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
         
         #loader {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 2000; background: #0052cc; color: white; padding: 10px 25px;
-            border-radius: 30px; display: none; font-size: 14px; font-weight: bold;
+            position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
+            z-index: 2000; background: #0052cc; color: white; padding: 8px 20px;
+            border-radius: 20px; display: none; font-family: sans-serif; font-size: 13px;
         }
 
+        /* Wieder Blau wie gewünscht */
         .p-marker {
             background-color: #0052cc; color: white; border: 2px solid white;
             border-radius: 4px; text-align: center; font-weight: bold;
             font-size: 14px; line-height: 24px; width: 24px !important; height: 24px !important;
-            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
         }
     </style>
 </head>
@@ -40,49 +41,27 @@
         <button onclick="manualSearch()">Suche</button>
     </div>
 
-    <div id="loader">Suche echte Parkplätze...</div>
+    <div id="loader">Suche Parkplätze...</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        let map, parkingLayer, radiusCircle, searchTimer;
-        let lastQueryLocation = null;
+        let map, parkingLayer, lastPos = null, searchTimer;
 
         function init() {
-            // CartoDB Voyager - Kostenlos, sauber und ohne API-Key
             map = L.map('map', { zoomControl: false, tap: false }).setView([51.16, 10.45], 6);
-            
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-                attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-            }).addTo(map);
-            
-            parkingLayer = L.layerGroup().addTo(map);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            parkingLayer = L.layerGroup().addTo(map);
 
             map.locate({setView: true, maxZoom: 14});
-            map.on('locationfound', e => updateView(e.latlng));
+            map.on('locationfound', e => fetchData(e.latlng));
 
             map.on('moveend', () => {
-                const center = map.getCenter();
-                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1500) {
-                    clearTimeout(searchTimer);
-                    searchTimer = setTimeout(() => updateView(center), 800);
-                }
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(() => fetchData(map.getCenter()), 1000);
             });
-        }
-
-        function updateView(ll) {
-            if (radiusCircle) map.removeLayer(radiusCircle);
-            radiusCircle = L.circle(ll, {
-                color: '#0052cc',
-                fillColor: '#0052cc',
-                fillOpacity: 0.07,
-                weight: 1.5,
-                radius: 5000 
-            }).addTo(map);
-
-            fetchData(ll);
         }
 
         async function manualSearch() {
@@ -93,22 +72,24 @@
             if (data.length > 0) {
                 const ll = L.latLng(data[0].lat, data[0].lon);
                 map.setView(ll, 14);
-                updateView(ll);
+                fetchData(ll);
             }
         }
 
         async function fetchData(ll) {
-            lastQueryLocation = ll;
-            document.getElementById('loader').style.display = 'block';
+            if (lastPos && map.distance(lastPos, ll) < 800) return;
+            lastPos = ll;
 
-            // DER STRENGE FILTER GEGEN STADT-CHAOS:
-            // Nur Flächen (ways), keine Punkte an Straßen (nodes), außer sie heißen Wanderparkplatz.
+            const loader = document.getElementById('loader');
+            loader.style.display = 'block';
+
+            // STRENGER FILTER GEGEN STADT-CHAOS:
+            // Wir schließen explizit street_side, lane und Parkhäuser aus.
             const query = `
                 [out:json][timeout:30];
                 (
-                  way["amenity"="parking"]["fee"="no"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:5000,${ll.lat},${ll.lng});
-                  node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Nature"](around:5000,${ll.lat},${ll.lng});
-                  way["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Nature"](around:5000,${ll.lat},${ll.lng});
+                  node["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:4000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:4000,${ll.lat},${ll.lng});
                 );
                 out center;`;
 
@@ -121,16 +102,16 @@
                     const coords = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
                     const tags = el.tags;
                     
+                    let name = tags.name || "Parkplatz";
                     const icon = L.divIcon({ className: 'p-marker', html: 'P' });
-                    const name = tags.name || "Kostenloser Platz";
                     
                     L.marker(coords, { icon: icon }).addTo(parkingLayer)
-                     .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Geprüfte Fläche'}`);
+                     .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Kostenlos'}`);
                 });
             } catch (e) {
-                console.error("Fehler", e);
+                console.error("Fehler:", e);
             } finally {
-                document.getElementById('loader').style.display = 'none';
+                loader.style.display = 'none';
             }
         }
 
