@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ParkFinder - Fokus Land & Natur</title>
+    <title>WanderPark - Echte Flächen</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
@@ -36,11 +36,11 @@
 <body>
 
     <div class="search-box">
-        <input type="text" id="target" placeholder="Ort oder Wald suchen...">
+        <input type="text" id="target" placeholder="Wanderziel oder Ort...">
         <button onclick="manualSearch()">Suche</button>
     </div>
 
-    <div id="loader">Suche kostenlose Plätze...</div>
+    <div id="loader">Filtere echte Parkplätze...</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -56,17 +56,15 @@
             
             parkingLayer = L.layerGroup().addTo(map);
 
-            // Standort finden
             map.locate({setView: true, maxZoom: 13});
             
             map.on('locationfound', e => {
                 updateVisuals(e.latlng);
             });
 
-            // Automatische Suche beim Verschieben
             map.on('moveend', () => {
                 const center = map.getCenter();
-                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1200) {
+                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1500) {
                     clearTimeout(searchTimer);
                     searchTimer = setTimeout(() => updateVisuals(center), 800);
                 }
@@ -74,7 +72,6 @@
         }
 
         function updateVisuals(ll) {
-            // Radius-Kreis zeichnen
             if (radiusCircle) map.removeLayer(radiusCircle);
             radiusCircle = L.circle(ll, {
                 color: '#0052cc',
@@ -103,16 +100,18 @@
             const loader = document.getElementById('loader');
             loader.style.display = 'block';
 
-            // Radikaler Filter: Schließt alles aus, was in Städten oft Geld kostet
-            // Sucht bevorzugt nach echten Flächen (ways), da diese seltener "Straßenrand" sind.
+            // RADIKALER FILTER:
+            // 1. Nur "ways" (echte Flächen), keine Punkte am Straßenrand (nodes).
+            // 2. Muss kostenlos sein ODER explizit Wanderparkplatz heißen.
+            // 3. Schließt alles Private/Kunden/Parkhäuser aus.
             const query = `
                 [out:json][timeout:30];
                 (
-                  node["amenity"="parking"]["fee"="no"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:5000,${ll.lat},${ll.lng});
+                  // Echte Parkplatzflächen (keine Gebühr)
                   way["amenity"="parking"]["fee"="no"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:5000,${ll.lat},${ll.lng});
-                  // Speziell für Wanderparkplätze im Wald (oft ohne "fee=no" getaggt)
-                  node["amenity"="parking"]["parking"~"hiking|nature"](around:5000,${ll.lat},${ll.lng});
-                  way["amenity"="parking"]["parking"~"hiking|nature"](around:5000,${ll.lat},${ll.lng});
+                  // Gezielte Suche nach Wanderparkplätzen (auch als Punkte im Wald erlaubt)
+                  node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking"](around:5000,${ll.lat},${ll.lng});
                 );
                 out center;`;
 
@@ -126,13 +125,13 @@
                     const tags = el.tags;
                     
                     const icon = L.divIcon({ className: 'p-marker', html: 'P' });
-                    const name = tags.name || "Kostenloser Parkplatz";
+                    const name = tags.name || "Kostenlose Fläche";
                     
                     L.marker(coords, { icon: icon }).addTo(parkingLayer)
-                     .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Naturplatz'}`);
+                     .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Naturparkplatz'}`);
                 });
             } catch (e) {
-                console.error("Datenfehler", e);
+                console.error("Fehler", e);
             } finally {
                 loader.style.display = 'none';
             }
