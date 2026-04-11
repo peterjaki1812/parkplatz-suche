@@ -1,130 +1,315 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Parken & Gastro - Weltweit Suche</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
-    <script src="https://unpkg.com/opening_hours@3.7.0/opening_hours.js"></script>
-    <style>
-        body { margin: 0; padding: 0; font-family: 'Segoe UI', sans-serif; }
-        #map { height: 100vh; width: 100vw; }
-        
-        /* Suchfeld Styling */
-        .search-container {
-            position: absolute; top: 10px; left: 50px; z-index: 1000;
-            display: flex; gap: 5px; background: white; padding: 5px;
-            border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        }
-        .search-container input {
-            padding: 8px; border: 1px solid #ccc; border-radius: 4px; outline: none; width: 150px;
-        }
-        .search-container button {
-            background: #003399; color: white; border: none; padding: 8px 12px;
-            border-radius: 4px; cursor: pointer;
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WanderFreunde Tour</title>
 
-        .status-box {
-            position: absolute; top: 65px; left: 50%; transform: translateX(-50%);
-            z-index: 1000; background: rgba(255,255,255,0.9); padding: 5px 15px;
-            border-radius: 20px; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-            font-weight: bold; font-size: 12px; text-align: center;
-        }
-    </style>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:Arial,sans-serif;background:#1a1a1a;color:white}
+
+/* HEADER */
+h1{text-align:center;padding:12px;background:#2d6a2d;color:white;font-size:24px;letter-spacing:1px}
+h2{text-align:center;padding:6px;background:#2d6a2d;color:#c8e6c8;font-size:14px;font-weight:normal;letter-spacing:2px}
+
+/* BUTTONS */
+.buttons{display:flex;justify-content:center;gap:15px;padding:12px;background:#222;border-bottom:1px solid #444}
+button{padding:12px 30px;font-size:16px;font-weight:bold;border:none;border-radius:25px;cursor:pointer;color:white;transition:0.2s}
+#btn-nah{background:#2d6a2d;border:2px solid #1e4d1e}
+#btn-mittel{background:#00008B;border:2px solid #000055}
+#btn-fern{background:#e07b00;border:2px solid #9c5600}
+
+#info{text-align:center;padding:10px;font-size:15px;color:#a5d6a7;background:#111;font-weight:bold}
+
+/* MAP */
+#map{width:100%;height:500px;background:#222}
+
+/* MARKER */
+.custom-marker{width:24px;height:24px;border-radius:50%;border:3px solid #fff;outline:2px solid #000;box-shadow:0 0 10px rgba(0,0,0,1);display:block}
+
+/* POPUP */
+.leaflet-popup-content-wrapper{background:#1a1a1a;color:white;border-radius:12px;border:2px solid #444;width:300px}
+.popup-info h3{color:#fff;background:#0033cc;padding:6px 8px;border-radius:4px;margin-bottom:8px;font-size:16px;text-align:center}
+.popup-info p{margin:5px 0;font-size:13px;line-height:1.4;border-bottom:1px solid #333;padding-bottom:4px}
+.popup-info b{color:#81c784}
+.popup-navi{color:#ffcc00;font-size:13px;font-weight:bold}
+
+/* TOUR-KARTEN */
+#touren-liste{padding:15px;display:flex;flex-direction:column;gap:12px;max-width:1000px;margin:0 auto}
+.tour-karte{background:#2a2a2a;border-radius:12px;padding:15px;border-left:10px solid;color:#ddd}
+.tour-karte.nah{border-left-color:#2d6a2d}
+.tour-karte.mittel{border-left-color:#00008B}
+.tour-karte.fern{border-left-color:#e07b00}
+.address-box{color:#ffcc00;font-size:1em;font-weight:bold;display:block;margin-top:5px;border:1px dashed #555;padding:6px;background:#111;border-radius:6px}
+.park-hinweis{color:#ff9800;font-size:12px;display:block;margin-top:4px;}
+.hm-badge{display:inline-block;background:#333;color:#81c784;padding:2px 8px;border-radius:10px;font-size:12px;margin-left:8px}
+
+/* ABSTIMMUNG */
+#abstimmung-bereich{max-width:1000px;margin:0 auto;padding:15px}
+.abstimmung-box{background:#1e1e1e;border-radius:16px;padding:20px;border:2px solid #444;margin-top:10px}
+.abstimmung-box h3{text-align:center;color:#a5d6a7;font-size:20px;margin-bottom:15px}
+.vote-btn{width:100%;padding:12px;margin:8px 0;border-radius:10px;border:none;font-size:15px;font-weight:bold;cursor:pointer;color:white;background:#333;transition:0.2s;text-align:left}
+.vote-btn:hover{background:#555}
+.vote-bar-wrap{margin:8px 0}
+.vote-bar-label{display:flex;justify-content:space-between;margin-bottom:4px;font-size:14px;color:#ccc}
+.vote-bar-bg{background:#333;border-radius:10px;height:22px;overflow:hidden}
+.vote-bar-fill{height:100%;border-radius:10px;transition:width 0.5s}
+.vote-gesamt{text-align:center;color:#aaa;font-size:13px;margin-top:10px}
+.bereits-abgestimmt{text-align:center;color:#ff9800;font-size:14px;font-weight:bold;padding:10px;background:#2a2000;border-radius:8px;margin-top:10px}
+.reset-bereich{text-align:center;margin-top:20px;padding:15px;background:#111;border-radius:12px;border:1px dashed #555}
+.reset-bereich input{padding:8px 15px;border-radius:8px;border:1px solid #555;background:#222;color:white;font-size:14px;margin-right:10px}
+.reset-btn{padding:8px 20px;background:#8b0000;border:none;border-radius:8px;color:white;font-weight:bold;cursor:pointer;font-size:14px}
+.reset-btn:hover{background:#cc0000}
+
+/* IMPRESSUM */
+#impressum{padding:30px;background:#111;font-size:0.85em;border-top:1px solid #333;color:#777;text-align:center}
+</style>
 </head>
+
 <body>
 
-<div class="search-container">
-    <input type="text" id="cityInput" placeholder="Ort eingeben (z.B. Cochem)">
-    <button onclick="searchCity()"><i class="fa-solid fa-magnifying-glass"></i></button>
+<h1>🥾 WanderFreunde Tour</h1>
+<h2>Abstimmen – Losgehen – Erleben!</h2>
+
+<div class="buttons">
+<button id="btn-nah" onclick="zeigeTour('nah')">🟢 Nah</button>
+<button id="btn-mittel" onclick="zeigeTour('mittel')">🔵 Mittel</button>
+<button id="btn-fern" onclick="zeigeTour('fern')">🟠 Fern</button>
 </div>
 
-<div class="status-box" id="status">Bereit</div>
+<div id="info">📍 Klicke auf einen Button um Touren zu sehen!</div>
+
 <div id="map"></div>
+
+<div id="touren-liste"></div>
+
+<div id="abstimmung-bereich"></div>
+
+<div id="impressum">
+    <h3>Impressum</h3>
+    <p>Angaben gemäß § 5 TMG<br>WanderFreunde Gruppe</p>
+</div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const map = L.map('map').setView([51.333, 6.562], 14);
-    const statusBox = document.getElementById('status');
-    let markerGroup = L.layerGroup().addTo(map);
-    let searchCircle = null;
+var map=L.map('map').setView([51.35,6.6],9);
+L.tileLayer('https://tile.openstreetmap.de/{z}/{x}/{y}.png').addTo(map);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
 
-    const iconP = L.divIcon({ html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 26px;"></i>', className: 'custom-icon', iconAnchor: [13, 13] });
-    const iconR = L.divIcon({ html: '<i class="fa-solid fa-utensils" style="color: #2ecc71; font-size: 22px;"></i>', className: 'custom-icon', iconAnchor: [11, 11] });
-    const iconI = L.divIcon({ html: '<i class="fa-solid fa-ice-cream" style="color: #8e44ad; font-size: 24px;"></i>', className: 'custom-icon', iconAnchor: [12, 12] });
+var aktiveMarker=[];
+var farben={nah:'#006400',mittel:'#00008B',fern:'#FF8C00'};
+var rotationState={nah:0,mittel:0,fern:0};
+var aktuelleTouren=[];
+var RESET_PASSWORT='wandern2025';
 
-    // Stadt suchen Funktion
-    async function searchCity() {
-        const query = document.getElementById('cityInput').value;
-        if(!query) return;
-        
-        statusBox.innerHTML = "Suche Ort...";
-        try {
-            const resp = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
-            const data = await resp.json();
-            if(data.length > 0) {
-                const { lat, lon } = data[0];
-                map.setView([lat, lon], 15);
-                // Suche startet automatisch durch moveend-Event
-            } else {
-                statusBox.innerHTML = "Ort nicht gefunden";
-            }
-        } catch(e) { statusBox.innerHTML = "Fehler bei Ortssuche"; }
+function getRestaurantName(r){
+    return r.replace('🍴 ','').split('–')[0].trim();
+}
+
+var touren={
+nah:[
+{name:"Diersfordter Wald",km:"14 km",hm:"120 hm",start:[51.6833,6.5333],parkplatz:"Am Schloßpark 1, 46487 Wesel",highlights:"Großwildgehege & Moorpfade 🌲",restaurant:"🍴 Waldschänke – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Kaiserswerth",km:"12 km",hm:"80 hm",start:[51.3167,6.7333],parkplatz:"Burgallee, 40489 Düsseldorf-Kaiserswerth",highlights:"Kaiserpfalz & Rheinpromenade 🏛️",restaurant:"🍴 Alte Rathausallee – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Bislicher Insel",km:"13 km",hm:"60 hm",start:[51.6667,6.3833],parkplatz:"Bislicher Insel, 46509 Xanten",highlights:"Vogelparadies & Auenlandschaft 🦢",restaurant:"🍴 Auen-Café – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Neandertal Rundweg",km:"13 km",hm:"220 hm",start:[51.2167,6.9833],parkplatz:"Theisbruch 1, 40822 Mettmann",highlights:"Eiszeit-Wildgehege & Düsselschlucht 🏛️",restaurant:"🍴 Neandertal No. 1 – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Krickenbecker Seen",km:"13.5 km",hm:"90 hm",start:[51.3167,6.2000],parkplatz:"Krickenbecker Allee 37, 41334 Nettetal",highlights:"Wasserschloss & Vogelparadies 🦢",restaurant:"🍴 Seeblick – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Leucht Waldgebiet",km:"12.5 km",hm:"150 hm",start:[51.5667,6.2833],parkplatz:"Wanderparkplatz B510, 47475 Kamp-Lintfort",highlights:"Heide-Landschaft & Aussichtsturm 🌲",restaurant:"🍴 Klosterkamp Gastro – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Hülser Berg",km:"13 km",hm:"180 hm",start:[51.3833,6.5333],parkplatz:"Rennstieg 1, 47802 Krefeld",highlights:"Johannesturm & Wildschweine ⛰️",restaurant:"🍴 Bergschänke – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Zons am Rhein",km:"12 km",hm:"70 hm",start:[51.1367,6.8417],parkplatz:"Museumstraße 1, 41541 Dormagen-Zons",highlights:"Mittelalterliche Zollfeste & Rheinblick 🏛️",restaurant:"🍴 Schlossdestille – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Schloss Rheydt",km:"12.5 km",hm:"100 hm",start:[51.1667,6.4333],parkplatz:"Schloßstraße 508, 41238 Mönchengladbach",highlights:"Renaissance-Schloss & Schlosspark 🏯",restaurant:"🍴 Schloss-Gastro – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+
+], /* Ende NAH */
+
+/* ===========================
+   MITTEL-TOUREN
+   =========================== */
+
+mittel:[
+{name:"Altenberger Dom",km:"15 km",hm:"280 hm",start:[51.0550,7.1333],parkplatz:"Hauptstraße 6, 51519 Odenthal",highlights:"Märchenwald & gotischer Dom ⛪",restaurant:"🍴 Küchenhof Odenthal – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Drachenfels Siebengebirge",km:"13 km",hm:"320 hm",start:[50.6650,7.2100],parkplatz:"Drachenfelsstraße Großparkplatz, 53639 Königswinter",highlights:"Burgruine & Rheinblick 🐉",restaurant:"🍴 Felders am Drachenfels – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Kloster Maria Laach",km:"13 km",hm:"180 hm",start:[50.4000,7.2667],parkplatz:"Am Laacher See Großparkplatz, 56653 Glees",highlights:"Vulkansee & Benediktinerabtei 🌋",restaurant:"🍴 Klostergaststätte Maria Laach – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Eifel Monschau Altstadt",km:"13 km",hm:"260 hm",start:[50.5583,6.2417],parkplatz:"Außenparkplatz Monschau, 52156 Monschau",highlights:"Fachwerkhäuser & Burg Monschau 🏘️",restaurant:"🍴 Historisches Café Monschau – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Rurtalsperre Schwammenauel",km:"14 km",hm:"200 hm",start:[50.6333,6.4167],parkplatz:"Seeuferstraße Großparkplatz, 52152 Simmerath",highlights:"Größte Talsperre NRWs 💧",restaurant:"🍴 Seerestaurant Rurtal – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 150m)"},
+{name:"Eifel Nürburgring Umgebung",km:"14 km",hm:"300 hm",start:[50.3333,6.9500],parkplatz:"Nürburg Wanderparkplatz, 53520 Adenau",highlights:"Burg Nürburg & Eifellandschaft 🏰",restaurant:"🍴 Burgschänke Nürburg – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Eifel Gemündener Maar",km:"12 km",hm:"220 hm",start:[50.2167,6.9000],parkplatz:"Maarseeweg Wanderparkplatz, 54550 Daun",highlights:"Vulkanmaare & Kraterseen 🌊",restaurant:"🍴 Maarseerestaurant Daun – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Aachener Stadtwald Dreiländereck",km:"13 km",hm:"180 hm",start:[50.7333,6.0833],parkplatz:"Stadtwald Großparkplatz, 52074 Aachen",highlights:"Dreiländereck DE-NL-BE 🏛️",restaurant:"🍴 Waldrestaurant Aachen – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Sauerland Biggesee",km:"14 km",hm:"250 hm",start:[51.0333,7.9000],parkplatz:"Seestraße Großparkplatz, 57439 Attendorn",highlights:"Biggesee & Hanseatisches Attendorn 💧",restaurant:"🍴 Seerestaurant Biggesee Attendorn – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Sauerland Möhnesee",km:"13 km",hm:"180 hm",start:[51.4833,8.0667],parkplatz:"Seeweg Großparkplatz, 59519 Möhnesee",highlights:"Staumauer & Sauerländer Wälder 💧",restaurant:"🍴 Seeblick Möhnesee – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 150m)"},
+
+/* ... (Mittel geht weiter in Teil 3) ... */
+{name:"Sauerland Rothaarsteig",km:"14 km",hm:"380 hm",start:[51.1833,8.4333],parkplatz:"Kahler Asten Großparkplatz, 59955 Winterberg",highlights:"Kahler Asten höchster Berg 🏔️",restaurant:"🍴 Berghotel Kahler Asten – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Teutoburger Wald Externsteine",km:"13 km",hm:"220 hm",start:[51.8667,8.9167],parkplatz:"Externsteine Großparkplatz, 32805 Horn-Bad Meinberg",highlights:"Mystische Felsformationen 🪨",restaurant:"🍴 Waldgasthof Externsteine – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Teutoburger Wald Hermannsdenkmal",km:"12 km",hm:"260 hm",start:[51.9167,8.8333],parkplatz:"Grotenburg Großparkplatz, 32760 Detmold",highlights:"Hermannsdenkmal & Panorama 🗿",restaurant:"🍴 Gasthaus Hermannshöhe Detmold – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 200m)"},
+{name:"Münsterland Schloss Nordkirchen",km:"13 km",hm:"60 hm",start:[51.7333,7.5167],parkplatz:"Schloßstraße Großparkplatz, 59394 Nordkirchen",highlights:"Versailles des Münsterlandes 🏯",restaurant:"🍴 Schlossrestaurant Nordkirchen – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+{name:"Münsterland Schloss Vischering",km:"12 km",hm:"70 hm",start:[51.6500,7.5167],parkplatz:"Berenbrock 1, 59348 Lüdinghausen",highlights:"Wasserburg & Münsterland 🏰",restaurant:"🍴 Burgrestaurant Vischering – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 50m)"},
+{name:"Köln Königsforst",km:"14 km",hm:"160 hm",start:[50.9333,7.1667],parkplatz:"Königsforst Großparkplatz, 51147 Köln",highlights:"Stille Wälder & Bergisches Land 🌲",restaurant:"🍴 Waldgasthof Königsforst Köln – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+{name:"Ahr Rotweinwanderweg",km:"14 km",hm:"340 hm",start:[50.5333,6.9500],parkplatz:"Bachstraße Wanderparkplatz, 53505 Altenahr",highlights:"Weinberge & Burg Are 🍷",restaurant:"🍴 Weingut Altenahr – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Bergisches Land Schloss Burg",km:"13 km",hm:"280 hm",start:[51.1167,7.2833],parkplatz:"Schloss Burg Großparkplatz, 42659 Solingen",highlights:"Schloss Burg & Fachwerk 🏰",restaurant:"🍴 Burgrestaurant Schloss Burg Solingen – Sa. ab 15 Uhr | direkt am Parkplatz (ca. 100m)"},
+
+], /* Ende MITTEL */
+
+/* ===========================
+   FERN-TOUREN
+   =========================== */
+
+fern:[
+{name:"Mosel Burg Eltz Rundweg",km:"14 km",hm:"380 hm",start:[50.2000,7.3333],parkplatz:"Münstermaifeld Wanderparkplatz, 56294 Münstermaifeld",highlights:"Burg Eltz schönste Burg Deutschlands 🏰",restaurant:"🍴 Burgschenke Eltz – Sa. ab 15 Uhr | auf der Route (ca. 400m)"},
+{name:"Mosel Cochem Weinberge",km:"13 km",hm:"320 hm",start:[50.1500,7.1667],parkplatz:"Moselpromenade Großparkplatz, 56812 Cochem",highlights:"Reichsburg Cochem & Weinberge 🍷",restaurant:"🍴 Weingut am Markt Cochem – Sa. ab 15 Uhr | auf der Route (ca. 200m)"},
+{name:"Koblenz Deutsches Eck",km:"13 km",hm:"280 hm",start:[50.3667,7.6000],parkplatz:"Deutsches Eck Großparkplatz, 56068 Koblenz",highlights:"Deutsches Eck & Festung Ehrenbreitstein 🏛️",restaurant:"🍴 Festungsrestaurant Ehrenbreitstein Koblenz – Sa. ab 15 Uhr | auf der Route (ca. 300m)"},
+
+/* ... ALLE DEINE FERN-TOUREN ... */
+
+{name:"Hunsrück Boppard Rheinschleife",km:"14 km",hm:"320 hm",start:[50.2333,7.5833],parkplatz:"Boppard Großparkplatz, 56154 Boppard",highlights:"Rheinschleife Boppard & Aussicht 🌊",restaurant:"🍴 Weinhaus Boppard – Sa. ab 15 Uhr | auf der Route (ca. 300m)"}
+]}; /* Ende FERN */
+
+/* ===========================
+   ABSTIMMUNG + FUNKTIONEN
+   =========================== */
+
+function ladeStimmen(){
+    var d=localStorage.getItem('wf_stimmen');
+    return d?JSON.parse(d):{tour0:0,tour1:0,tour2:0,gesamt:0};
+}
+
+function speichereStimmen(s){
+    localStorage.setItem('wf_stimmen',JSON.stringify(s));
+}
+
+function hatAbgestimmt(){
+    return localStorage.getItem('wf_hat_abgestimmt')==='ja';
+}
+
+function abstimmen(i){
+    if(hatAbgestimmt())return;
+    var s=ladeStimmen();
+    s['tour'+i]++;
+    s.gesamt++;
+    speichereStimmen(s);
+    localStorage.setItem('wf_hat_abgestimmt','ja');
+    zeigeAbstimmung();
+}
+
+function resetStimmen(){
+    var pw=document.getElementById('reset-pw').value;
+    if(pw===RESET_PASSWORT){
+        localStorage.removeItem('wf_stimmen');
+        localStorage.removeItem('wf_hat_abgestimmt');
+        document.getElementById('reset-pw').value='';
+        zeigeAbstimmung();
+        alert('✅ Abstimmung zurückgesetzt!');
+    } else {
+        alert('❌ Falsches Passwort!');
+    }
+}
+
+function zeigeAbstimmung(){
+    if(aktuelleTouren.length===0)return;
+
+    var s=ladeStimmen();
+    var ab=hatAbgestimmt();
+    var fc=['#2d6a2d','#00008B','#e07b00'];
+
+    var h='<div class="abstimmung-box"><h3>🗳️ Für welche Tour stimmt ihr ab?</h3>';
+
+    if(!ab){
+        aktuelleTouren.forEach(function(t,i){
+            h+='<button class="vote-btn" onclick="abstimmen('+i+')">👍 Tour '+(i+1)+': '+t.name+'</button>';
+        });
+    } else {
+        var g=s.gesamt||1;
+        aktuelleTouren.forEach(function(t,i){
+            var a=s['tour'+i]||0;
+            var p=Math.round((a/g)*100);
+            h+='<div class="vote-bar-wrap"><div class="vote-bar-label"><span>Tour '+(i+1)+': '+t.name+'</span><span>'+p+'% ('+a+' Stimmen)</span></div><div class="vote-bar-bg"><div class="vote-bar-fill" style="width:'+p+'%;background:'+fc[i]+';"></div></div></div>';
+        });
+        h+='<div class="vote-gesamt">Gesamt: '+g+' Stimme(n) abgegeben</div><div class="bereits-abgestimmt">✅ Du hast bereits abgestimmt!</div>';
     }
 
-    map.locate({setView: true, maxZoom: 15});
-    map.on('locationfound', () => startSuche());
-    map.on('moveend', () => startSuche());
+    h+='<div class="reset-bereich"><p style="color:#aaa;margin-bottom:8px;font-size:13px;">🔐 Nur für den Besitzer:</p><input type="password" id="reset-pw" placeholder="Passwort eingeben"/><button class="reset-btn" onclick="resetStimmen()">🔄 Reset</button></div></div>';
 
-    async function startSuche() {
-        const center = map.getCenter();
-        statusBox.innerHTML = "Lade Daten...";
-        
-        if (searchCircle) map.removeLayer(searchCircle);
-        searchCircle = L.circle(center, { radius: 1000, color: '#003399', fillOpacity: 0.1, weight: 1 }).addTo(map);
-        
-        const query = `[out:json][timeout:20];(
-            node["amenity"="parking"](around:1000,${center.lat},${center.lng});
-            way["amenity"="parking"](around:1000,${center.lat},${center.lng});
-            node["amenity"~"restaurant|ice_cream"](around:1000,${center.lat},${center.lng});
-        );out center;`;
+    document.getElementById('abstimmung-bereich').innerHTML=h;
+}
 
-        try {
-            const resp = await fetch('https://overpass-api.de/api/interpreter?data=' + encodeURIComponent(query));
-            const data = await resp.json();
-            markerGroup.clearLayers();
+/* ===========================
+   TOUR-ANZEIGE
+   =========================== */
 
-            data.elements.forEach(el => {
-                const pos = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lng];
-                let icon = iconP;
-                let title = el.tags.name || (el.tags.amenity === 'parking' ? "Parkplatz" : "Eintrag");
+function zeigeTour(bereich){
+    var pool=touren[bereich];
 
-                if (el.tags.amenity === 'restaurant') icon = iconR;
-                if (el.tags.amenity === 'ice_cream') icon = iconI;
-                
-                let oh = "";
-                if(el.tags.opening_hours) {
-                    try {
-                        const ohParser = new opening_hours(el.tags.opening_hours);
-                        oh = ohParser.getState() ? "<br><b style='color:green;'>OFFEN</b>" : "<br><b style='color:red;'>ZU</b>";
-                    } catch(e) { oh = "<br>Zeit: " + el.tags.opening_hours; }
-                }
-
-                L.marker(pos, {icon: icon}).addTo(markerGroup).bindPopup(`<b>${title}</b>${oh}`);
-            });
-            statusBox.innerHTML = "Bereit (1km Umkreis)";
-        } catch (err) {
-            statusBox.innerHTML = "Pause (Server belegt)";
-        }
+    if(!pool||pool.length===0){
+        document.getElementById('info').innerText='⏳ Diese Touren folgen bald!';
+        document.getElementById('touren-liste').innerHTML='';
+        document.getElementById('abstimmung-bereich').innerHTML='';
+        return;
     }
+
+    aktiveMarker.forEach(m=>map.removeLayer(m));
+    aktiveMarker=[];
+
+    var si=rotationState[bereich];
+    aktuelleTouren=[];
+
+    for(let i=0;i<Math.min(pool.length,3);i++){
+        aktuelleTouren.push(pool[(si+i)%pool.length]);
+    }
+
+    rotationState[bereich]=(si+3)%pool.length;
+
+    var bounds=[];
+    var lh='';
+
+    aktuelleTouren.forEach(tour=>{
+        var icon=L.divIcon({
+            className:'custom-div-icon',
+            html:'<div class="custom-marker" style="background-color:'+farben[bereich]+';"></div>',
+            iconSize:[26,26],
+            iconAnchor:[13,13]
+        });
+
+        var m=L.marker(tour.start,{icon:icon}).addTo(map);
+
+        m.bindPopup(
+            '<div class="popup-info">'+
+            '<h3>'+tour.name+'</h3>'+
+            '<p><b>📏 Strecke:</b> '+tour.km+' &nbsp;|&nbsp; <b>⛰️ Höhenmeter:</b> '+tour.hm+'</p>'+
+            '<p><b>✨ Highlights:</b> '+tour.highlights+'</p>'+
+            '<p><b>🍴 Einkehr:</b> '+tour.restaurant+'</p>'+
+            '<p><b>🅿️ Navi-Adresse:</b><br><span class="popup-navi">'+tour.parkplatz+'</span></p>'+
+            '</div>'
+        );
+
+        aktiveMarker.push(m);
+        bounds.push(tour.start);
+
+        var restName=getRestaurantName(tour.restaurant);
+
+        lh+=
+        '<div class="tour-karte '+bereich+'">'+
+        '<h3>🥾 '+tour.name+' <span class="hm-badge">⛰️ '+tour.hm+'</span></h3>'+
+        '<p><b>📏 Strecke:</b> '+tour.km+' &nbsp;|&nbsp; <b>⛰️ Höhenmeter:</b> '+tour.hm+'</p>'+
+        '<p><b>🅿️ Navi-Adresse:</b></p>'+
+        '<span class="address-box">📍 '+tour.parkplatz+'</span>'+
+        '<span class="park-hinweis">⚠️ Bitte Parkgebühren vor Ort prüfen</span>'+
+        '<p style="margin-top:8px;"><b>✨ Highlights:</b> '+tour.highlights+'</p>'+
+        '<p><b>🍴 Gastro:</b> '+tour.restaurant+'</p>'+
+        '<a href="https://www.google.com/search?q='+encodeURIComponent(restName)+'" target="_blank" style="display:inline-block;margin-top:8px;padding:6px 14px;background:#c0392b;color:white;border-radius:8px;font-size:13px;text-decoration:none;">🍽️ '+restName+' googeln</a>'+
+        '</div>';
+    });
+
+    if(bounds.length>0){
+        map.flyToBounds(bounds,{padding:[60,60],duration:1.5});
+    }
+
+    document.getElementById('touren-liste').innerHTML=lh;
+    document.getElementById('info').innerText='✅ 3 Touren gefunden! Nochmal klicken für andere Vorschläge.';
+    zeigeAbstimmung();
+}
+
 </script>
-
-<div id="impressum" style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc;">
-    Impressum: Peter Jaki | Kontakt: peterjaki@example.com | 2026 Parkplatz-Suche
-</div>
-
 </body>
 </html>
+
