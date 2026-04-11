@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WanderPark - Mit Radius</title>
+    <title>ParkFinder - Fokus Land & Natur</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
@@ -36,11 +36,11 @@
 <body>
 
     <div class="search-box">
-        <input type="text" id="target" placeholder="Ort suchen...">
+        <input type="text" id="target" placeholder="Ort oder Wald suchen...">
         <button onclick="manualSearch()">Suche</button>
     </div>
 
-    <div id="loader">Suche Parkplätze...</div>
+    <div id="loader">Suche kostenlose Plätze...</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -60,34 +60,30 @@
             map.locate({setView: true, maxZoom: 13});
             
             map.on('locationfound', e => {
-                updateRadius(e.latlng);
-                fetchData(e.latlng);
+                updateVisuals(e.latlng);
             });
 
-            // Suche beim Verschieben
+            // Automatische Suche beim Verschieben
             map.on('moveend', () => {
                 const center = map.getCenter();
-                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1000) {
+                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1200) {
                     clearTimeout(searchTimer);
-                    searchTimer = setTimeout(() => {
-                        updateRadius(center);
-                        fetchData(center);
-                    }, 800);
+                    searchTimer = setTimeout(() => updateVisuals(center), 800);
                 }
             });
         }
 
-        function updateRadius(ll) {
-            if (radiusCircle) {
-                map.removeLayer(radiusCircle);
-            }
-            // Blauer Kreis mit 5km Radius
+        function updateVisuals(ll) {
+            // Radius-Kreis zeichnen
+            if (radiusCircle) map.removeLayer(radiusCircle);
             radiusCircle = L.circle(ll, {
                 color: '#0052cc',
                 fillColor: '#0052cc',
                 fillOpacity: 0.1,
-                radius: 5000 // 5 km
+                radius: 5000 
             }).addTo(map);
+
+            fetchData(ll);
         }
 
         async function manualSearch() {
@@ -98,8 +94,7 @@
             if (data.length > 0) {
                 const ll = L.latLng(data[0].lat, data[0].lon);
                 map.setView(ll, 13);
-                updateRadius(ll);
-                fetchData(ll);
+                updateVisuals(ll);
             }
         }
 
@@ -108,12 +103,16 @@
             const loader = document.getElementById('loader');
             loader.style.display = 'block';
 
-            // Suche im 5km Radius
+            // Radikaler Filter: Schließt alles aus, was in Städten oft Geld kostet
+            // Sucht bevorzugt nach echten Flächen (ways), da diese seltener "Straßenrand" sind.
             const query = `
                 [out:json][timeout:30];
                 (
-                  node["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:5000,${ll.lat},${ll.lng});
-                  way["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:5000,${ll.lat},${ll.lng});
+                  node["amenity"="parking"]["fee"="no"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["fee"="no"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:5000,${ll.lat},${ll.lng});
+                  // Speziell für Wanderparkplätze im Wald (oft ohne "fee=no" getaggt)
+                  node["amenity"="parking"]["parking"~"hiking|nature"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["parking"~"hiking|nature"](around:5000,${ll.lat},${ll.lng});
                 );
                 out center;`;
 
@@ -133,7 +132,7 @@
                      .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Naturplatz'}`);
                 });
             } catch (e) {
-                console.error("Fehler", e);
+                console.error("Datenfehler", e);
             } finally {
                 loader.style.display = 'none';
             }
