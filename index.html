@@ -3,105 +3,118 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Parkplatz-Fokus (High Speed)</title>
+    <title>Parkplatz-Finder Ultra</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <style>
-        body { margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; }
+        body { margin: 0; padding: 0; font-family: sans-serif; overflow: hidden; background: #f0f0f0; }
         #map { height: 100vh; width: 100vw; }
-        .ui-fixed {
+        .ui-panel {
             position: absolute; top: 10px; left: 10px; right: 10px; z-index: 1000;
             display: flex; flex-direction: column; align-items: center; gap: 8px;
         }
-        .search-area {
-            display: flex; width: 90%; max-width: 400px; background: white; 
-            padding: 5px; border-radius: 25px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        .search-bar {
+            display: flex; width: 95%; max-width: 450px; background: white; 
+            padding: 5px; border-radius: 30px; box-shadow: 0 4px 20px rgba(0,0,0,0.3);
         }
-        input { border: none; padding: 10px; flex-grow: 1; border-radius: 20px; outline: none; }
-        button { background: #003399; color: white; border: none; padding: 10px 15px; border-radius: 20px; font-weight: bold; }
+        input { border: none; padding: 12px 20px; flex-grow: 1; border-radius: 25px; outline: none; font-size: 16px; }
+        button { background: #003399; color: white; border: none; padding: 10px 25px; border-radius: 25px; font-weight: bold; cursor: pointer; }
         #status {
-            background: white; padding: 4px 15px; border-radius: 15px;
-            font-size: 11px; font-weight: bold; box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            background: rgba(255,255,255,0.95); padding: 6px 20px; border-radius: 20px;
+            font-size: 13px; font-weight: bold; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            color: #003399; border: 1px solid #003399;
         }
     </style>
 </head>
 <body>
 
-<div class="ui-fixed">
-    <div class="search-area">
-        <input type="text" id="cityInput" placeholder="Ort (z.B. Cochem)">
-        <button onclick="searchLoc()">Suchen</button>
+<div class="ui-panel">
+    <div class="search-bar">
+        <input type="text" id="cityInput" placeholder="Stadt eingeben (z.B. Krefeld)">
+        <button onclick="searchCity()">Suchen</button>
     </div>
-    <div id="status">Bereit</div>
+    <div id="status">Warte auf Karte...</div>
 </div>
 
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
-    const map = L.map('map', { zoomControl: false }).setView([51.32, 6.56], 15);
+    const map = L.map('map', { zoomControl: false }).setView([51.33, 6.56], 15);
     const status = document.getElementById('status');
-    const markerGroup = L.layerGroup().addTo(map);
+    const markerLayer = L.layerGroup().addTo(map);
 
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '© OpenStreetMap'
+    }).addTo(map);
 
     const iconP = L.divIcon({ 
-        html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 30px; text-shadow: 2px 2px 2px white;"></i>', 
+        html: '<i class="fa-solid fa-square-p" style="color: #003399; font-size: 30px; text-shadow: 0 0 3px white;"></i>', 
         className: 'p-marker', iconAnchor: [15, 15] 
     });
 
-    async function searchLoc() {
+    async function searchCity() {
         const val = document.getElementById('cityInput').value;
         if(!val) return;
         status.innerHTML = "Suche Ort...";
-        const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}`);
-        const d = await r.json();
-        if(d.length > 0) map.setView([d[0].lat, d[0].lon], 16);
+        try {
+            const r = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}`);
+            const d = await r.json();
+            if(d.length > 0) map.setView([d[0].lat, d[0].lon], 16);
+        } catch(e) { status.innerHTML = "Fehler bei Ortssuche"; }
     }
 
-    let isWaiting = false;
-    map.on('moveend', () => { if(!isWaiting) loadParkings(); });
+    // Server-Liste für Redundanz
+    const servers = [
+        'https://overpass-api.de/api/interpreter',
+        'https://overpass.kumi.systems/api/interpreter',
+        'https://lz4.overpass-api.de/api/interpreter'
+    ];
+    let currentServerIdx = 0;
+
+    map.on('moveend', () => loadAllParkings());
     map.locate({setView: true, maxZoom: 16});
-    map.on('locationfound', () => loadParkings());
+    map.on('locationfound', () => loadAllParkings());
 
-    async function loadParkings() {
+    async function loadAllParkings() {
         const c = map.getCenter();
-        status.innerHTML = "Suche Parkplätze...";
-        status.style.color = "blue";
-
-        // EXTREM kleine Abfrage (500m) für maximale Geschwindigkeit gegen 504 Timeouts
-        const query = `[out:json][timeout:10];(way["amenity"="parking"](around:500,${c.lat},${c.lng});node["amenity"="parking"](around:500,${c.lat},${c.lng}););out center;`;
-
-        // Wir nutzen einen alternativen Server-Endpunkt, falls der Hauptserver hängt
-        const server = 'https://overpass.kumi.systems/api/interpreter'; 
+        status.innerHTML = "Suche Parkplätze (800m)...";
+        
+        // Ultrascharfe Abfrage für ALLES was parken ist
+        const query = `[out:json][timeout:15];(
+            node["amenity"="parking"](around:800,${c.lat},${c.lng});
+            way["amenity"="parking"](around:800,${c.lat},${c.lng});
+            node["parking"](around:800,${c.lat},${c.lng});
+            way["parking"](around:800,${c.lat},${c.lng});
+        );out center;`;
 
         try {
-            const res = await fetch(server + '?data=' + encodeURIComponent(query));
-            if(!res.ok) throw new Error("Server-Fehler");
+            const res = await fetch(servers[currentServerIdx] + '?data=' + encodeURIComponent(query));
+            if(!res.ok) throw new Error();
             
             const data = await res.json();
-            markerGroup.clearLayers();
+            markerLayer.clearLayers();
             
             let count = 0;
             data.elements.forEach(el => {
                 const pos = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lng];
-                L.marker(pos, {icon: iconP}).addTo(markerGroup).bindPopup("Parkplatz");
+                L.marker(pos, {icon: iconP}).addTo(markerLayer).bindPopup("<b>Parkplatz</b>");
                 count++;
             });
 
-            status.innerHTML = `Gefunden: ${count} Parkplätze (500m)`;
-            status.style.color = "green";
+            status.innerHTML = `Gefunden: ${count} Parkplätze`;
+            if(count === 0) status.innerHTML = "Keine Parkplätze im 800m Radius gefunden.";
         } catch(e) {
-            status.innerHTML = "Server überlastet - bitte 10s warten";
-            status.style.color = "red";
-            isWaiting = true;
-            setTimeout(() => { isWaiting = false; status.innerHTML = "Bereit"; }, 10000);
+            // Bei Fehler: Nächsten Server probieren
+            currentServerIdx = (currentServerIdx + 1) % servers.length;
+            status.innerHTML = "Serverwechsel... bitte kurz warten";
+            setTimeout(loadAllParkings, 2000);
         }
     }
 </script>
 
-<div style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc;">
-    Impressum: Peter Jaki | 2026 High-Speed Version
+<div style="position: fixed; bottom: 0; width: 100%; background: white; font-size: 10px; text-align: center; z-index: 1001; padding: 5px; border-top: 1px solid #ccc; font-weight: bold;">
+    Impressum: Peter Jaki | 2026 Ultra-Version
 </div>
 
 </body>
