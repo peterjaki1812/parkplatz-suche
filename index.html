@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>ParkFinder - Nur echte Flächen</title>
+    <title>WanderPark - Mit Radius</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; }
@@ -16,16 +16,15 @@
             width: 85%; max-width: 400px;
         }
         
-        input { flex: 1; border: 1px solid #ddd; padding: 8px 12px; border-radius: 4px; outline: none; }
-        button { background: #0052cc; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
+        input { flex: 1; border: 1px solid #ddd; padding: 8px 12px; border-radius: 4px; outline: none; font-size: 16px; }
+        button { background: #0052cc; color: white; border: none; padding: 10px 15px; border-radius: 4px; cursor: pointer; font-weight: bold; }
         
         #loader {
             position: absolute; bottom: 25px; left: 50%; transform: translateX(-50%);
             z-index: 2000; background: #0052cc; color: white; padding: 8px 20px;
-            border-radius: 20px; display: none; font-family: sans-serif; font-size: 13px;
+            border-radius: 20px; display: none; font-family: sans-serif; font-size: 13px; font-weight: bold;
         }
 
-        /* Wieder Blau wie gewünscht */
         .p-marker {
             background-color: #0052cc; color: white; border: 2px solid white;
             border-radius: 4px; text-align: center; font-weight: bold;
@@ -37,7 +36,7 @@
 <body>
 
     <div class="search-box">
-        <input type="text" id="target" placeholder="Ort oder Wanderziel...">
+        <input type="text" id="target" placeholder="Ort suchen...">
         <button onclick="manualSearch()">Suche</button>
     </div>
 
@@ -47,21 +46,48 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 
     <script>
-        let map, parkingLayer, lastPos = null, searchTimer;
+        let map, parkingLayer, radiusCircle, searchTimer;
+        let lastQueryLocation = null;
 
         function init() {
             map = L.map('map', { zoomControl: false, tap: false }).setView([51.16, 10.45], 6);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            
             parkingLayer = L.layerGroup().addTo(map);
 
-            map.locate({setView: true, maxZoom: 14});
-            map.on('locationfound', e => fetchData(e.latlng));
-
-            map.on('moveend', () => {
-                clearTimeout(searchTimer);
-                searchTimer = setTimeout(() => fetchData(map.getCenter()), 1000);
+            // Standort finden
+            map.locate({setView: true, maxZoom: 13});
+            
+            map.on('locationfound', e => {
+                updateRadius(e.latlng);
+                fetchData(e.latlng);
             });
+
+            // Suche beim Verschieben
+            map.on('moveend', () => {
+                const center = map.getCenter();
+                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1000) {
+                    clearTimeout(searchTimer);
+                    searchTimer = setTimeout(() => {
+                        updateRadius(center);
+                        fetchData(center);
+                    }, 800);
+                }
+            });
+        }
+
+        function updateRadius(ll) {
+            if (radiusCircle) {
+                map.removeLayer(radiusCircle);
+            }
+            // Blauer Kreis mit 5km Radius
+            radiusCircle = L.circle(ll, {
+                color: '#0052cc',
+                fillColor: '#0052cc',
+                fillOpacity: 0.1,
+                radius: 5000 // 5 km
+            }).addTo(map);
         }
 
         async function manualSearch() {
@@ -71,25 +97,23 @@
             const data = await res.json();
             if (data.length > 0) {
                 const ll = L.latLng(data[0].lat, data[0].lon);
-                map.setView(ll, 14);
+                map.setView(ll, 13);
+                updateRadius(ll);
                 fetchData(ll);
             }
         }
 
         async function fetchData(ll) {
-            if (lastPos && map.distance(lastPos, ll) < 800) return;
-            lastPos = ll;
-
+            lastQueryLocation = ll;
             const loader = document.getElementById('loader');
             loader.style.display = 'block';
 
-            // STRENGER FILTER GEGEN STADT-CHAOS:
-            // Wir schließen explizit street_side, lane und Parkhäuser aus.
+            // Suche im 5km Radius
             const query = `
                 [out:json][timeout:30];
                 (
-                  node["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:4000,${ll.lat},${ll.lng});
-                  way["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:4000,${ll.lat},${ll.lng});
+                  node["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["fee"!="yes"]["access"!~"private|customers"]["parking"!~"street_side|lane|multi-storey"](around:5000,${ll.lat},${ll.lng});
                 );
                 out center;`;
 
@@ -102,14 +126,14 @@
                     const coords = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
                     const tags = el.tags;
                     
-                    let name = tags.name || "Parkplatz";
                     const icon = L.divIcon({ className: 'p-marker', html: 'P' });
+                    const name = tags.name || "Kostenloser Parkplatz";
                     
                     L.marker(coords, { icon: icon }).addTo(parkingLayer)
-                     .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Kostenlos'}`);
+                     .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Naturplatz'}`);
                 });
             } catch (e) {
-                console.error("Fehler:", e);
+                console.error("Fehler", e);
             } finally {
                 loader.style.display = 'none';
             }
