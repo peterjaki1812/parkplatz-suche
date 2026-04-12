@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WanderPark - Speed Edition</title>
+    <title>Wanderführer Pro - Gruppen-Parken</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
@@ -21,7 +21,7 @@
         
         #loader {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 2000; background: #0052cc; color: white; padding: 10px 25px;
+            z-index: 2000; background: #c00; color: white; padding: 10px 25px;
             border-radius: 30px; display: none; font-size: 14px; font-weight: bold;
         }
 
@@ -36,11 +36,11 @@
 <body>
 
     <div class="search-box">
-        <input type="text" id="target" placeholder="Ort suchen...">
+        <input type="text" id="target" placeholder="Ziel für die 26er Gruppe...">
         <button onclick="manualSearch()">Suche</button>
     </div>
 
-    <div id="loader">Suche Wanderparkplätze...</div>
+    <div id="loader">Suche große Wanderparkplätze...</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -50,28 +50,20 @@
         let lastQueryLocation = null;
 
         function init() {
-            // Kontrastreiches OSM Design
             map = L.map('map', { zoomControl: false, tap: false }).setView([51.16, 10.45], 6);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OSM',
-                maxZoom: 19
-            }).addTo(map);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
             
             parkingLayer = L.layerGroup().addTo(map);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
             map.locate({setView: true, maxZoom: 13});
-            
             map.on('locationfound', e => updateView(e.latlng));
 
-            // Optimierte Abfrage beim Verschieben
             map.on('moveend', () => {
                 const center = map.getCenter();
-                // Erst suchen, wenn man sich mehr als 2,5km vom letzten Punkt entfernt hat
-                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 2500) {
+                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 2000) {
                     clearTimeout(searchTimer);
-                    searchTimer = setTimeout(() => updateView(center), 1200); // 1.2 Sek Pause
+                    searchTimer = setTimeout(() => updateView(center), 1000);
                 }
             });
         }
@@ -79,14 +71,8 @@
         function updateView(ll) {
             if (radiusCircle) map.removeLayer(radiusCircle);
             radiusCircle = L.circle(ll, {
-                color: '#0052cc',
-                fillColor: '#0052cc',
-                fillOpacity: 0.1,
-                weight: 2,
-                dashArray: '5, 10', // Gestrichelter Kreis für bessere Sichtbarkeit
-                radius: 5000 
+                color: '#0052cc', weight: 2, dashArray: '5, 10', fillOpacity: 0.05, radius: 5000 
             }).addTo(map);
-
             fetchData(ll);
         }
 
@@ -106,15 +92,18 @@
             lastQueryLocation = ll;
             document.getElementById('loader').style.display = 'block';
 
-            // EXTREMER FILTER: Nur echte Wander-Flächen oder benannte Plätze im Wald
+            // STRENGSTER FILTER FÜR GRUPPEN:
+            // 1. Muss einen Namen haben ("Wanderparkplatz X")
+            // 2. Muss eine Fläche sein (kein einzelner Punkt am Straßenrand)
+            // 3. ODER explizit Wander-Tags haben
             const query = `
                 [out:json][timeout:30];
                 (
-                  // Nur Parkplätze mit Namen "Wander"
-                  node["amenity"="parking"]["name"~"Wander|Hiking|Nature"](around:5000,${ll.lat},${ll.lng});
-                  way["amenity"="parking"]["name"~"Wander|Hiking|Nature"](around:5000,${ll.lat},${ll.lng});
-                  // Große Wald-Parkplätze (flächenbasiert, ohne Gebühr)
-                  way["amenity"="parking"]["fee"="no"]["access"!~"private|customers"]["parking"~"surface"](around:5000,${ll.lat},${ll.lng});
+                  // Nur benannte Parkplatz-Flächen (oft größer und für Gruppen geeignet)
+                  way["amenity"="parking"]["name"]["fee"="no"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
+                  // Gezielte Suche nach "Wander" im Namen (auch Nodes im Wald erlaubt)
+                  node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald"](around:5000,${ll.lat},${ll.lng});
                 );
                 out center;`;
 
@@ -127,17 +116,15 @@
                     const coords = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
                     const tags = el.tags;
                     
-                    // Filtert anonyme Mini-Parkplätze in Wohngebieten aus
-                    if (!tags.name && el.type === 'node') return;
+                    // Sicherheit: Nur anzeigen wenn Name vorhanden (Wanderführer braucht klare Ziele)
+                    if (!tags.name) return;
 
                     const icon = L.divIcon({ className: 'p-marker', html: 'P' });
-                    const name = tags.name || "Kostenloser Wanderplatz";
-                    
                     L.marker(coords, { icon: icon }).addTo(parkingLayer)
-                     .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Natur'}`);
+                     .bindPopup(`<b>${tags.name}</b><br>Ideal für Gruppen<br>${tags.surface ? 'Boden: ' + tags.surface : ''}`);
                 });
             } catch (e) {
-                console.error("Datenfehler", e);
+                console.error("Fehler", e);
             } finally {
                 document.getElementById('loader').style.display = 'none';
             }
