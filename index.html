@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wanderführer Pro - Gruppen-Parken</title>
+    <title>Wanderführer Pro - Speed Edition</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
@@ -21,7 +21,7 @@
         
         #loader {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 2000; background: #c00; color: white; padding: 10px 25px;
+            z-index: 2000; background: #0052cc; color: white; padding: 10px 25px;
             border-radius: 30px; display: none; font-size: 14px; font-weight: bold;
         }
 
@@ -36,11 +36,11 @@
 <body>
 
     <div class="search-box">
-        <input type="text" id="target" placeholder="Ziel für die 26er Gruppe...">
+        <input type="text" id="target" placeholder="Ort für die 26er Gruppe...">
         <button onclick="manualSearch()">Suche</button>
     </div>
 
-    <div id="loader">Suche große Wanderparkplätze...</div>
+    <div id="loader">Lade Wanderparkplätze...</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -50,7 +50,8 @@
         let lastQueryLocation = null;
 
         function init() {
-            map = L.map('map', { zoomControl: false, tap: false }).setView([51.16, 10.45], 6);
+            // Startansicht Krefeld (angepasst auf deine Region)
+            map = L.map('map', { zoomControl: false, tap: false }).setView([51.33, 6.56], 13);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
             
             parkingLayer = L.layerGroup().addTo(map);
@@ -59,20 +60,28 @@
             map.locate({setView: true, maxZoom: 13});
             map.on('locationfound', e => updateView(e.latlng));
 
+            // Schnellere Reaktion beim Bewegen (400ms statt 1000ms)
             map.on('moveend', () => {
                 const center = map.getCenter();
-                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 2000) {
+                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1500) {
                     clearTimeout(searchTimer);
-                    searchTimer = setTimeout(() => updateView(center), 1000);
+                    searchTimer = setTimeout(() => updateView(center), 400);
                 }
             });
         }
 
         function updateView(ll) {
+            // Radius-Kreis: Dicker und kräftiger für bessere Sichtbarkeit
             if (radiusCircle) map.removeLayer(radiusCircle);
             radiusCircle = L.circle(ll, {
-                color: '#0052cc', weight: 2, dashArray: '5, 10', fillOpacity: 0.05, radius: 5000 
+                color: '#0044aa', 
+                weight: 4, 
+                dashArray: '10, 15', 
+                fillColor: '#0052cc',
+                fillOpacity: 0.1, 
+                radius: 5000 
             }).addTo(map);
+
             fetchData(ll);
         }
 
@@ -92,18 +101,13 @@
             lastQueryLocation = ll;
             document.getElementById('loader').style.display = 'block';
 
-            // STRENGSTER FILTER FÜR GRUPPEN:
-            // 1. Muss einen Namen haben ("Wanderparkplatz X")
-            // 2. Muss eine Fläche sein (kein einzelner Punkt am Straßenrand)
-            // 3. ODER explizit Wander-Tags haben
+            // DEIN STRENGER FILTER (Nur benannte Flächen & Wander-Keywords)
             const query = `
-                [out:json][timeout:30];
+                [out:json][timeout:25];
                 (
-                  // Nur benannte Parkplatz-Flächen (oft größer und für Gruppen geeignet)
                   way["amenity"="parking"]["name"]["fee"="no"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
-                  // Gezielte Suche nach "Wander" im Namen (auch Nodes im Wald erlaubt)
-                  node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald"](around:5000,${ll.lat},${ll.lng});
-                  way["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald"](around:5000,${ll.lat},${ll.lng});
+                  node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald|Natur"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald|Natur"](around:5000,${ll.lat},${ll.lng});
                 );
                 out center;`;
 
@@ -116,12 +120,11 @@
                     const coords = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
                     const tags = el.tags;
                     
-                    // Sicherheit: Nur anzeigen wenn Name vorhanden (Wanderführer braucht klare Ziele)
                     if (!tags.name) return;
 
                     const icon = L.divIcon({ className: 'p-marker', html: 'P' });
                     L.marker(coords, { icon: icon }).addTo(parkingLayer)
-                     .bindPopup(`<b>${tags.name}</b><br>Ideal für Gruppen<br>${tags.surface ? 'Boden: ' + tags.surface : ''}`);
+                     .bindPopup(`<b>${tags.name}</b><br>Gruppen-Treffpunkt<br>${tags.surface ? 'Boden: ' + tags.surface : ''}`);
                 });
             } catch (e) {
                 console.error("Fehler", e);
