@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wanderführer Pro - Speed Edition</title>
+    <title>WanderPark - Speed Edition</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
@@ -21,7 +21,7 @@
         
         #loader {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 2000; background: #002266; color: white; padding: 10px 25px;
+            z-index: 2000; background: #0052cc; color: white; padding: 10px 25px;
             border-radius: 30px; display: none; font-size: 14px; font-weight: bold;
         }
 
@@ -36,11 +36,11 @@
 <body>
 
     <div class="search-box">
-        <input type="text" id="target" placeholder="Ziel für die 26er Gruppe...">
+        <input type="text" id="target" placeholder="Ort suchen...">
         <button onclick="manualSearch()">Suche</button>
     </div>
 
-    <div id="loader">Lade Wanderparkplätze...</div>
+    <div id="loader">Suche Wanderparkplätze...</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -50,33 +50,40 @@
         let lastQueryLocation = null;
 
         function init() {
-            map = L.map('map', { zoomControl: false, tap: false }).setView([51.33, 6.56], 12);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            // Kontrastreiches OSM Design
+            map = L.map('map', { zoomControl: false, tap: false }).setView([51.16, 10.45], 6);
+            
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OSM',
+                maxZoom: 19
+            }).addTo(map);
             
             parkingLayer = L.layerGroup().addTo(map);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
             map.locate({setView: true, maxZoom: 13});
+            
             map.on('locationfound', e => updateView(e.latlng));
 
+            // Optimierte Abfrage beim Verschieben
             map.on('moveend', () => {
                 const center = map.getCenter();
-                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1000) {
+                // Erst suchen, wenn man sich mehr als 2,5km vom letzten Punkt entfernt hat
+                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 2500) {
                     clearTimeout(searchTimer);
-                    searchTimer = setTimeout(() => updateView(center), 300); // Sehr schnelle Reaktion
+                    searchTimer = setTimeout(() => updateView(center), 1200); // 1.2 Sek Pause
                 }
             });
         }
 
         function updateView(ll) {
-            // Radius-Kreis: Dunkelblau, durchgehend, sehr gut sichtbar
             if (radiusCircle) map.removeLayer(radiusCircle);
             radiusCircle = L.circle(ll, {
-                color: '#002266', 
-                weight: 5, 
-                opacity: 0.9,
+                color: '#0052cc',
                 fillColor: '#0052cc',
-                fillOpacity: 0.05, 
+                fillOpacity: 0.1,
+                weight: 2,
+                dashArray: '5, 10', // Gestrichelter Kreis für bessere Sichtbarkeit
                 radius: 5000 
             }).addTo(map);
 
@@ -99,12 +106,15 @@
             lastQueryLocation = ll;
             document.getElementById('loader').style.display = 'block';
 
+            // EXTREMER FILTER: Nur echte Wander-Flächen oder benannte Plätze im Wald
             const query = `
-                [out:json][timeout:15];
+                [out:json][timeout:30];
                 (
-                  way["amenity"="parking"]["name"]["fee"="no"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
-                  node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald|Natur"](around:5000,${ll.lat},${ll.lng});
-                  way["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald|Natur"](around:5000,${ll.lat},${ll.lng});
+                  // Nur Parkplätze mit Namen "Wander"
+                  node["amenity"="parking"]["name"~"Wander|Hiking|Nature"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["name"~"Wander|Hiking|Nature"](around:5000,${ll.lat},${ll.lng});
+                  // Große Wald-Parkplätze (flächenbasiert, ohne Gebühr)
+                  way["amenity"="parking"]["fee"="no"]["access"!~"private|customers"]["parking"~"surface"](around:5000,${ll.lat},${ll.lng});
                 );
                 out center;`;
 
@@ -117,14 +127,17 @@
                     const coords = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
                     const tags = el.tags;
                     
-                    if (!tags.name) return;
+                    // Filtert anonyme Mini-Parkplätze in Wohngebieten aus
+                    if (!tags.name && el.type === 'node') return;
 
                     const icon = L.divIcon({ className: 'p-marker', html: 'P' });
+                    const name = tags.name || "Kostenloser Wanderplatz";
+                    
                     L.marker(coords, { icon: icon }).addTo(parkingLayer)
-                     .bindPopup(`<b>${tags.name}</b><br>Gruppen-Treffpunkt<br>${tags.surface ? 'Boden: ' + tags.surface : ''}`);
+                     .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Natur'}`);
                 });
             } catch (e) {
-                console.error("Timeout/Fehler", e);
+                console.error("Datenfehler", e);
             } finally {
                 document.getElementById('loader').style.display = 'none';
             }
