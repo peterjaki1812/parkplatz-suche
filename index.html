@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WanderPark - Speed Edition</title>
+    <title>Wanderführer Pro - High Visibility</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
@@ -12,24 +12,25 @@
         .search-box {
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
             z-index: 2000; display: flex; gap: 8px; background: white;
-            padding: 8px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            padding: 8px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             width: 90%; max-width: 400px;
         }
         
         input { flex: 1; border: 1px solid #ccc; padding: 10px; border-radius: 6px; outline: none; font-size: 16px; }
-        button { background: #0052cc; color: white; border: none; padding: 0 15px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        button { background: #002266; color: white; border: none; padding: 0 15px; border-radius: 6px; cursor: pointer; font-weight: bold; }
         
         #loader {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 2000; background: #0052cc; color: white; padding: 10px 25px;
+            z-index: 2000; background: #001133; color: white; padding: 12px 30px;
             border-radius: 30px; display: none; font-size: 14px; font-weight: bold;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
         }
 
         .p-marker {
-            background-color: #0052cc; color: white; border: 2px solid white;
+            background-color: #003399; color: white; border: 2px solid white;
             border-radius: 5px; text-align: center; font-weight: bold;
             font-size: 14px; line-height: 24px; width: 24px !important; height: 24px !important;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
         }
     </style>
 </head>
@@ -40,7 +41,7 @@
         <button onclick="manualSearch()">Suche</button>
     </div>
 
-    <div id="loader">Suche Wanderparkplätze...</div>
+    <div id="loader">Wanderparkplätze werden geladen...</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -50,40 +51,34 @@
         let lastQueryLocation = null;
 
         function init() {
-            // Kontrastreiches OSM Design
-            map = L.map('map', { zoomControl: false, tap: false }).setView([51.16, 10.45], 6);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OSM',
-                maxZoom: 19
-            }).addTo(map);
+            // Startet in Krefeld
+            map = L.map('map', { zoomControl: false, tap: false }).setView([51.33, 6.56], 12);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
             
             parkingLayer = L.layerGroup().addTo(map);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
             map.locate({setView: true, maxZoom: 13});
-            
             map.on('locationfound', e => updateView(e.latlng));
 
-            // Optimierte Abfrage beim Verschieben
             map.on('moveend', () => {
                 const center = map.getCenter();
-                // Erst suchen, wenn man sich mehr als 2,5km vom letzten Punkt entfernt hat
-                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 2500) {
+                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1000) {
                     clearTimeout(searchTimer);
-                    searchTimer = setTimeout(() => updateView(center), 1200); // 1.2 Sek Pause
+                    searchTimer = setTimeout(() => updateView(center), 250); // Extrem schnelles Nachladen
                 }
             });
         }
 
         function updateView(ll) {
+            // Radius-Kreis: Jetzt Dunkelblau, dicker (weight: 6) und durchgehend (kein dashArray)
             if (radiusCircle) map.removeLayer(radiusCircle);
             radiusCircle = L.circle(ll, {
-                color: '#0052cc',
-                fillColor: '#0052cc',
-                fillOpacity: 0.1,
-                weight: 2,
-                dashArray: '5, 10', // Gestrichelter Kreis für bessere Sichtbarkeit
+                color: '#001133', 
+                weight: 6, 
+                opacity: 1, 
+                fillColor: '#003399',
+                fillOpacity: 0.08, 
                 radius: 5000 
             }).addTo(map);
 
@@ -106,15 +101,12 @@
             lastQueryLocation = ll;
             document.getElementById('loader').style.display = 'block';
 
-            // EXTREMER FILTER: Nur echte Wander-Flächen oder benannte Plätze im Wald
             const query = `
-                [out:json][timeout:30];
+                [out:json][timeout:15];
                 (
-                  // Nur Parkplätze mit Namen "Wander"
-                  node["amenity"="parking"]["name"~"Wander|Hiking|Nature"](around:5000,${ll.lat},${ll.lng});
-                  way["amenity"="parking"]["name"~"Wander|Hiking|Nature"](around:5000,${ll.lat},${ll.lng});
-                  // Große Wald-Parkplätze (flächenbasiert, ohne Gebühr)
-                  way["amenity"="parking"]["fee"="no"]["access"!~"private|customers"]["parking"~"surface"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["name"]["fee"="no"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
+                  node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald|Natur"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald|Natur"](around:5000,${ll.lat},${ll.lng});
                 );
                 out center;`;
 
@@ -127,17 +119,14 @@
                     const coords = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
                     const tags = el.tags;
                     
-                    // Filtert anonyme Mini-Parkplätze in Wohngebieten aus
-                    if (!tags.name && el.type === 'node') return;
+                    if (!tags.name) return;
 
                     const icon = L.divIcon({ className: 'p-marker', html: 'P' });
-                    const name = tags.name || "Kostenloser Wanderplatz";
-                    
                     L.marker(coords, { icon: icon }).addTo(parkingLayer)
-                     .bindPopup(`<b>${name}</b><br>${tags.surface ? 'Boden: ' + tags.surface : 'Natur'}`);
+                     .bindPopup(`<b>${tags.name}</b><br>Gruppen-Treffpunkt<br>${tags.surface ? 'Boden: ' + tags.surface : ''}`);
                 });
             } catch (e) {
-                console.error("Datenfehler", e);
+                console.error("Fehler beim Laden", e);
             } finally {
                 document.getElementById('loader').style.display = 'none';
             }
