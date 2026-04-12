@@ -3,24 +3,28 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wanderführer Pro - City & Nature</title>
+    <title>Wanderführer Pro - Gruppen-Parken</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
         #map { height: 100vh; width: 100vw; background: #aad3df; }
+        
         .search-box {
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
             z-index: 2000; display: flex; gap: 8px; background: white;
             padding: 8px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.2);
             width: 90%; max-width: 400px;
         }
+        
         input { flex: 1; border: 1px solid #ccc; padding: 10px; border-radius: 6px; outline: none; font-size: 16px; }
         button { background: #0052cc; color: white; border: none; padding: 0 15px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        
         #loader {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 2000; background: #0052cc; color: white; padding: 10px 25px;
+            z-index: 2000; background: #c00; color: white; padding: 10px 25px;
             border-radius: 30px; display: none; font-size: 14px; font-weight: bold;
         }
+
         .p-marker {
             background-color: #0052cc; color: white; border: 2px solid white;
             border-radius: 5px; text-align: center; font-weight: bold;
@@ -30,31 +34,36 @@
     </style>
 </head>
 <body>
+
     <div class="search-box">
-        <input type="text" id="target" placeholder="Sammelpunkt oder Ziel...">
+        <input type="text" id="target" placeholder="Ziel für die 26er Gruppe...">
         <button onclick="manualSearch()">Suche</button>
     </div>
-    <div id="loader">Suche Plätze...</div>
+
+    <div id="loader">Suche große Wanderparkplätze...</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
     <script>
         let map, parkingLayer, radiusCircle, searchTimer;
         let lastQueryLocation = null;
 
         function init() {
-            map = L.map('map', { zoomControl: false, tap: false }).setView([51.33, 6.56], 13);
+            map = L.map('map', { zoomControl: false, tap: false }).setView([51.16, 10.45], 6);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            
             parkingLayer = L.layerGroup().addTo(map);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
             map.locate({setView: true, maxZoom: 13});
             map.on('locationfound', e => updateView(e.latlng));
+
             map.on('moveend', () => {
                 const center = map.getCenter();
-                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1000) {
+                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 2000) {
                     clearTimeout(searchTimer);
-                    searchTimer = setTimeout(() => updateView(center), 500);
+                    searchTimer = setTimeout(() => updateView(center), 1000);
                 }
             });
         }
@@ -74,7 +83,7 @@
             const data = await res.json();
             if (data.length > 0) {
                 const ll = L.latLng(data[0].lat, data[0].lon);
-                map.setView(ll, 14);
+                map.setView(ll, 13);
                 updateView(ll);
             }
         }
@@ -82,30 +91,45 @@
         async function fetchData(ll) {
             lastQueryLocation = ll;
             document.getElementById('loader').style.display = 'block';
+
+            // STRENGSTER FILTER FÜR GRUPPEN:
+            // 1. Muss einen Namen haben ("Wanderparkplatz X")
+            // 2. Muss eine Fläche sein (kein einzelner Punkt am Straßenrand)
+            // 3. ODER explizit Wander-Tags haben
             const query = `
-                [out:json][timeout:25];
+                [out:json][timeout:30];
                 (
-                  way["amenity"="parking"]["fee"="no"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
+                  // Nur benannte Parkplatz-Flächen (oft größer und für Gruppen geeignet)
+                  way["amenity"="parking"]["name"]["fee"="no"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
+                  // Gezielte Suche nach "Wander" im Namen (auch Nodes im Wald erlaubt)
                   node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald"](around:5000,${ll.lat},${ll.lng});
                 );
                 out center;`;
 
             try {
                 const r = await fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query));
                 const d = await r.json();
+                
                 parkingLayer.clearLayers();
                 d.elements.forEach(el => {
                     const coords = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
                     const tags = el.tags;
-                    const name = tags.name || "Großparkplatz (Kostenlos)";
+                    
+                    // Sicherheit: Nur anzeigen wenn Name vorhanden (Wanderführer braucht klare Ziele)
+                    if (!tags.name) return;
+
                     const icon = L.divIcon({ className: 'p-marker', html: 'P' });
                     L.marker(coords, { icon: icon }).addTo(parkingLayer)
-                     .bindPopup(`<b>${name}</b><br>Gruppen-Check: Großfläche<br>${tags.surface ? 'Boden: ' + tags.surface : ''}`);
+                     .bindPopup(`<b>${tags.name}</b><br>Ideal für Gruppen<br>${tags.surface ? 'Boden: ' + tags.surface : ''}`);
                 });
-            } catch (e) { console.error(e); } finally {
+            } catch (e) {
+                console.error("Fehler", e);
+            } finally {
                 document.getElementById('loader').style.display = 'none';
             }
         }
+
         window.onload = init;
     </script>
 </body>
