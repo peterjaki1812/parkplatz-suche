@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wander-Parker Krefeld</title>
+    <title>Wanderführer Pro - City & Nature</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
@@ -25,41 +25,41 @@
             background-color: #0052cc; color: white; border: 2px solid white;
             border-radius: 5px; text-align: center; font-weight: bold;
             font-size: 14px; line-height: 24px; width: 24px !important; height: 24px !important;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
         }
     </style>
 </head>
 <body>
     <div class="search-box">
-        <input type="text" id="target" placeholder="Ort suchen...">
+        <input type="text" id="target" placeholder="Sammelpunkt oder Ziel...">
         <button onclick="manualSearch()">Suche</button>
     </div>
-    <div id="loader">Lade Parkplätze...</div>
+    <div id="loader">Suche Plätze...</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
         let map, parkingLayer, radiusCircle, searchTimer;
-        let lastPos = null;
+        let lastQueryLocation = null;
 
         function init() {
-            // Startet direkt in Krefeld am Bahnhof/Lohstraße Bereich
-            map = L.map('map', { zoomControl: false }).setView([51.328, 6.575], 14);
+            map = L.map('map', { zoomControl: false, tap: false }).setView([51.33, 6.56], 13);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
             parkingLayer = L.layerGroup().addTo(map);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
+            map.locate({setView: true, maxZoom: 13});
+            map.on('locationfound', e => updateView(e.latlng));
             map.on('moveend', () => {
                 const center = map.getCenter();
-                if (!lastPos || map.distance(lastPos, center) > 1000) {
+                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1000) {
                     clearTimeout(searchTimer);
-                    searchTimer = setTimeout(() => updateView(center), 400);
+                    searchTimer = setTimeout(() => updateView(center), 500);
                 }
             });
-            updateView(map.getCenter());
         }
 
         function updateView(ll) {
-            lastPos = ll;
             if (radiusCircle) map.removeLayer(radiusCircle);
             radiusCircle = L.circle(ll, {
                 color: '#0052cc', weight: 2, dashArray: '5, 10', fillOpacity: 0.05, radius: 5000 
@@ -73,29 +73,38 @@
             const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(val)}`);
             const data = await res.json();
             if (data.length > 0) {
-                map.setView([data[0].lat, data[0].lon], 14);
+                const ll = L.latLng(data[0].lat, data[0].lon);
+                map.setView(ll, 14);
+                updateView(ll);
             }
         }
 
         async function fetchData(ll) {
+            lastQueryLocation = ll;
             document.getElementById('loader').style.display = 'block';
-            // Erweiterter Filter: Kostenlose Plätze + Wanderparkplätze
-            const query = `[out:json];(
-                way["amenity"="parking"]["fee"="no"](around:5000,${ll.lat},${ll.lng});
-                node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Lohstraße"](around:5000,${ll.lat},${ll.lng});
-            );out center;`;
+            const query = `
+                [out:json][timeout:25];
+                (
+                  way["amenity"="parking"]["fee"="no"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
+                  node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald"](around:5000,${ll.lat},${ll.lng});
+                );
+                out center;`;
 
             try {
                 const r = await fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query));
                 const d = await r.json();
                 parkingLayer.clearLayers();
                 d.elements.forEach(el => {
-                    const c = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
-                    const name = el.tags.name || "Großparkplatz (Kostenlos)";
-                    L.marker(c, { icon: L.divIcon({ className: 'p-marker', html: 'P' }) })
-                     .addTo(parkingLayer).bindPopup(`<b>${name}</b><br>Kostenlos & Viel Platz`);
+                    const coords = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
+                    const tags = el.tags;
+                    const name = tags.name || "Großparkplatz (Kostenlos)";
+                    const icon = L.divIcon({ className: 'p-marker', html: 'P' });
+                    L.marker(coords, { icon: icon }).addTo(parkingLayer)
+                     .bindPopup(`<b>${name}</b><br>Gruppen-Check: Großfläche<br>${tags.surface ? 'Boden: ' + tags.surface : ''}`);
                 });
-            } finally { document.getElementById('loader').style.display = 'none'; }
+            } catch (e) { console.error(e); } finally {
+                document.getElementById('loader').style.display = 'none';
+            }
         }
         window.onload = init;
     </script>
