@@ -21,7 +21,7 @@
         
         #loader {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 2000; background: #0052cc; color: white; padding: 10px 25px;
+            z-index: 2000; background: #002266; color: white; padding: 10px 25px;
             border-radius: 30px; display: none; font-size: 14px; font-weight: bold;
         }
 
@@ -36,7 +36,7 @@
 <body>
 
     <div class="search-box">
-        <input type="text" id="target" placeholder="Ort für die 26er Gruppe...">
+        <input type="text" id="target" placeholder="Ziel für die 26er Gruppe...">
         <button onclick="manualSearch()">Suche</button>
     </div>
 
@@ -50,8 +50,7 @@
         let lastQueryLocation = null;
 
         function init() {
-            // Startansicht Krefeld (angepasst auf deine Region)
-            map = L.map('map', { zoomControl: false, tap: false }).setView([51.33, 6.56], 13);
+            map = L.map('map', { zoomControl: false, tap: false }).setView([51.33, 6.56], 12);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
             
             parkingLayer = L.layerGroup().addTo(map);
@@ -60,25 +59,24 @@
             map.locate({setView: true, maxZoom: 13});
             map.on('locationfound', e => updateView(e.latlng));
 
-            // Schnellere Reaktion beim Bewegen (400ms statt 1000ms)
             map.on('moveend', () => {
                 const center = map.getCenter();
-                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1500) {
+                if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1000) {
                     clearTimeout(searchTimer);
-                    searchTimer = setTimeout(() => updateView(center), 400);
+                    searchTimer = setTimeout(() => updateView(center), 300); // Sehr schnelle Reaktion
                 }
             });
         }
 
         function updateView(ll) {
-            // Radius-Kreis: Dicker und kräftiger für bessere Sichtbarkeit
+            // Radius-Kreis: Dunkelblau, durchgehend, sehr gut sichtbar
             if (radiusCircle) map.removeLayer(radiusCircle);
             radiusCircle = L.circle(ll, {
-                color: '#0044aa', 
-                weight: 4, 
-                dashArray: '10, 15', 
+                color: '#002266', 
+                weight: 5, 
+                opacity: 0.9,
                 fillColor: '#0052cc',
-                fillOpacity: 0.1, 
+                fillOpacity: 0.05, 
                 radius: 5000 
             }).addTo(map);
 
@@ -101,9 +99,8 @@
             lastQueryLocation = ll;
             document.getElementById('loader').style.display = 'block';
 
-            // DEIN STRENGER FILTER (Nur benannte Flächen & Wander-Keywords)
             const query = `
-                [out:json][timeout:25];
+                [out:json][timeout:15];
                 (
                   way["amenity"="parking"]["name"]["fee"="no"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
                   node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald|Natur"](around:5000,${ll.lat},${ll.lng});
@@ -127,7 +124,7 @@
                      .bindPopup(`<b>${tags.name}</b><br>Gruppen-Treffpunkt<br>${tags.surface ? 'Boden: ' + tags.surface : ''}`);
                 });
             } catch (e) {
-                console.error("Fehler", e);
+                console.error("Timeout/Fehler", e);
             } finally {
                 document.getElementById('loader').style.display = 'none';
             }
