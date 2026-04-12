@@ -3,58 +3,48 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wanderführer Pro - High Visibility</title>
+    <title>Wanderführer Pro - FIX</title>
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <style>
         html, body { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; font-family: sans-serif; }
         #map { height: 100vh; width: 100vw; background: #aad3df; }
-        
         .search-box {
             position: absolute; top: 15px; left: 50%; transform: translateX(-50%);
             z-index: 2000; display: flex; gap: 8px; background: white;
             padding: 8px; border-radius: 10px; box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             width: 90%; max-width: 400px;
         }
-        
         input { flex: 1; border: 1px solid #ccc; padding: 10px; border-radius: 6px; outline: none; font-size: 16px; }
-        button { background: #002266; color: white; border: none; padding: 0 15px; border-radius: 6px; cursor: pointer; font-weight: bold; }
-        
+        button { background: #000033; color: white; border: none; padding: 0 15px; border-radius: 6px; cursor: pointer; font-weight: bold; }
         #loader {
             position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            z-index: 2000; background: #001133; color: white; padding: 12px 30px;
+            z-index: 2000; background: #000033; color: white; padding: 12px 30px;
             border-radius: 30px; display: none; font-size: 14px; font-weight: bold;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
         }
-
         .p-marker {
             background-color: #003399; color: white; border: 2px solid white;
             border-radius: 5px; text-align: center; font-weight: bold;
             font-size: 14px; line-height: 24px; width: 24px !important; height: 24px !important;
-            box-shadow: 0 2px 8px rgba(0,0,0,0.5);
         }
     </style>
 </head>
 <body>
 
     <div class="search-box">
-        <input type="text" id="target" placeholder="Ort suchen...">
+        <input type="text" id="target" placeholder="Ziel eingeben...">
         <button onclick="manualSearch()">Suche</button>
     </div>
-
-    <div id="loader">Wanderparkplätze werden geladen...</div>
+    <div id="loader">Lade Wanderparkplätze...</div>
     <div id="map"></div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-
     <script>
         let map, parkingLayer, radiusCircle, searchTimer;
         let lastQueryLocation = null;
 
         function init() {
-            // Startet in Krefeld
             map = L.map('map', { zoomControl: false, tap: false }).setView([51.33, 6.56], 12);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
-            
             parkingLayer = L.layerGroup().addTo(map);
             L.control.zoom({ position: 'bottomright' }).addTo(map);
 
@@ -65,24 +55,53 @@
                 const center = map.getCenter();
                 if (!lastQueryLocation || map.distance(lastQueryLocation, center) > 1000) {
                     clearTimeout(searchTimer);
-                    searchTimer = setTimeout(() => updateView(center), 250); // Extrem schnelles Nachladen
+                    searchTimer = setTimeout(() => updateView(center), 250);
                 }
             });
         }
 
         function updateView(ll) {
-            // Radius-Kreis: Jetzt Dunkelblau, dicker (weight: 6) und durchgehend (kein dashArray)
             if (radiusCircle) map.removeLayer(radiusCircle);
+            // MASSIVER DUNKLER KREIS
             radiusCircle = L.circle(ll, {
-                color: '#001133', 
-                weight: 6, 
+                color: '#000033', 
+                weight: 8, 
                 opacity: 1, 
-                fillColor: '#003399',
-                fillOpacity: 0.08, 
+                fillColor: '#000033',
+                fillOpacity: 0.05, 
                 radius: 5000 
             }).addTo(map);
-
             fetchData(ll);
+        }
+
+        async function fetchData(ll) {
+            lastQueryLocation = ll;
+            document.getElementById('loader').style.display = 'block';
+
+            // STRENGER FILTER (Nur benannte Wander-Ziele)
+            const query = `
+                [out:json][timeout:15];
+                (
+                  way["amenity"="parking"]["name"]["fee"="no"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
+                  node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald|Natur"](around:5000,${ll.lat},${ll.lng});
+                  way["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald|Natur"](around:5000,${ll.lat},${ll.lng});
+                );
+                out center;`;
+
+            try {
+                const r = await fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query));
+                const d = await r.json();
+                parkingLayer.clearLayers();
+                d.elements.forEach(el => {
+                    const coords = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
+                    if (!el.tags.name) return;
+                    const icon = L.divIcon({ className: 'p-marker', html: 'P' });
+                    L.marker(coords, { icon: icon }).addTo(parkingLayer)
+                     .bindPopup(`<b>${el.tags.name}</b><br>Gruppen-Treffpunkt`);
+                });
+            } finally {
+                document.getElementById('loader').style.display = 'none';
+            }
         }
 
         async function manualSearch() {
@@ -96,42 +115,6 @@
                 updateView(ll);
             }
         }
-
-        async function fetchData(ll) {
-            lastQueryLocation = ll;
-            document.getElementById('loader').style.display = 'block';
-
-            const query = `
-                [out:json][timeout:15];
-                (
-                  way["amenity"="parking"]["name"]["fee"="no"]["access"!~"private|customers"](around:5000,${ll.lat},${ll.lng});
-                  node["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald|Natur"](around:5000,${ll.lat},${ll.lng});
-                  way["amenity"="parking"]["name"~"Wander|Wanderparkplatz|Hiking|Wald|Natur"](around:5000,${ll.lat},${ll.lng});
-                );
-                out center;`;
-
-            try {
-                const r = await fetch("https://overpass-api.de/api/interpreter?data=" + encodeURIComponent(query));
-                const d = await r.json();
-                
-                parkingLayer.clearLayers();
-                d.elements.forEach(el => {
-                    const coords = el.type === 'node' ? [el.lat, el.lon] : [el.center.lat, el.center.lon];
-                    const tags = el.tags;
-                    
-                    if (!tags.name) return;
-
-                    const icon = L.divIcon({ className: 'p-marker', html: 'P' });
-                    L.marker(coords, { icon: icon }).addTo(parkingLayer)
-                     .bindPopup(`<b>${tags.name}</b><br>Gruppen-Treffpunkt<br>${tags.surface ? 'Boden: ' + tags.surface : ''}`);
-                });
-            } catch (e) {
-                console.error("Fehler beim Laden", e);
-            } finally {
-                document.getElementById('loader').style.display = 'none';
-            }
-        }
-
         window.onload = init;
     </script>
 </body>
